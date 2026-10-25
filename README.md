@@ -52,7 +52,7 @@ Backed by an automated verification suite that validates sharding placements of 
 Use [uv](https://docs.astral.sh/uv/getting-started/installation/) to automatically manage the Python environment and sync dependencies specified in *pyproject.toml*:
 
 ```bash
-git clone https://github.com/Andrei-Aksionov/edufsdp.git
+git clone https://github.com/andrei-aksionau/edufsdp.git
 cd edufsdp
 uv sync
 ```
