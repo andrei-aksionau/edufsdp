@@ -21,7 +21,7 @@ uv handles everything out of the box - it will automatically fetch and provision
 1\. **Clone the Repository:**
 
 ```bash
-git clone https://github.com/Andrei-Aksionov/edufsdp.git
+git clone https://github.com/andrei-aksionau/edufsdp.git
 cd edufsdp
 ```
 
