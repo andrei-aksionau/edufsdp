@@ -17,6 +17,7 @@ flowchart LR
     Params([<b>Full Model Parameters</b>]) -->|Shard across ranks| Shards[<b>Sharded Parameters</b>]
 
     subgraph Loop ["Training Step Loop (Per Wrapped Block)"]
+        direction TB
         Forward[<b>Forward Pass</b><br/><i>All-Gather weights &rarr; <br> Compute activations &rarr; <br> Reshard weights</i>] --> Backward
         Backward[<b>Backward Pass</b><br/><i>All-Gather weights &rarr; <br> Compute gradients &rarr; <br> Reshard weights &rarr; <br> Reduce-Scatter gradients</i>] --> Update
         Update[<b>Local Optimizer Step</b><br/><i>Update local shard parameters</i>]
