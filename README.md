@@ -14,7 +14,7 @@
 ```mermaid
 flowchart LR
 
-    Params([<b>Full Model Parameters</b>]) -->|Shard across ranks| Shards[<b>Sharded Parameters</b>]
+    Params([<b>Model Parameters</b>]) -->|Shard| Shards[<b>Sharded Parameters</b>]
 
     subgraph Loop ["Training Step Loop (Per Wrapped Block)"]
         direction TB
