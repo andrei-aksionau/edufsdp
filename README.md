@@ -11,10 +11,12 @@
 
 <br>
 
+<div style="width: 100%; min-width: 900px; overflow-x: auto;">
+
 ```mermaid
 flowchart LR
 
-    Params([<b>Model Parameters</b>]) -->|Shard| Shards[<b>Sharded Parameters</b>]
+    Params([<b>Full Model Parameters</b>]) -->|Shard across ranks| Shards[<b>Sharded Parameters</b>]
 
     subgraph Loop ["Training Step Loop (Per Wrapped Block)"]
         direction TB
@@ -27,7 +29,10 @@ flowchart LR
     Update --> Shards
 
     class Start,Shards,Forward,Backward,Update primary;
+
 ```
+
+</div>
 
 ## Overview
 
