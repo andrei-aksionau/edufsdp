@@ -11,6 +11,23 @@
 
 <br>
 
+```mermaid
+flowchart LR
+
+    Params([<b>Full Model Parameters</b>]) -->|Shard across ranks| Shards[<b>Sharded Parameters</b>]
+
+    subgraph Loop ["Training Step Loop (Per Wrapped Block)"]
+        Forward[<b>Forward Pass</b><br/><i>All-Gather weights &rarr; <br> Compute activations &rarr; <br> Reshard weights</i>] --> Backward
+        Backward[<b>Backward Pass</b><br/><i>All-Gather weights &rarr; <br> Compute gradients &rarr; <br> Reshard weights &rarr; <br> Reduce-Scatter gradients</i>] --> Update
+        Update[<b>Local Optimizer Step</b><br/><i>Update local shard parameters</i>]
+    end
+
+    Shards --> Forward
+    Update --> Shards
+
+    class Start,Shards,Forward,Backward,Update primary;
+```
+
 ## Overview
 
 While PyTorch's native FullyShardedDataParallel (FSDP) is powerful and production-ready, its codebase is designed for massive scale, making it hard to peel back the layers and understand how things work step by step.
