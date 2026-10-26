@@ -7,7 +7,7 @@ Handles extracting and loading model state dictionaries in two formats:
 """
 
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import torch
 import torch.nn as nn
@@ -33,18 +33,47 @@ class StateDictManager:
     """Manages state dict extraction and restoration for sharded models."""
 
     @staticmethod
+    def _collect_sharded_parameters(module: nn.Module) -> dict[str, ShardedParameter]:
+        """
+        Recursively collect sharded parameters across the module tree.
+
+        Args:
+            module: Target root `nn.Module` to inspect.
+
+        Returns:
+            Dictionary mapping parameter FQNs to their `ShardedParameter` wrappers.
+
+        """
+        sharded_parameters_dict: dict[str, ShardedParameter] = {}
+
+        def _walk(submodule: nn.Module, prefix: str = "") -> None:
+            if hasattr(submodule, "_sharded_parameters"):
+                submodule_parameters = cast(
+                    "dict[str, ShardedParameter]",
+                    submodule._sharded_parameters,
+                )
+                for submodule_name, sharded_parameter in submodule_parameters.items():
+                    fqn = f"{prefix}{submodule_name}" if prefix else submodule_name
+                    sharded_parameters_dict[fqn] = sharded_parameter
+
+            for child_name, child_module in submodule.named_children():
+                child_prefix = f"{prefix}{child_name}." if prefix else f"{child_name}."
+                _walk(child_module, prefix=child_prefix)
+
+        _walk(module)
+        return sharded_parameters_dict
+
+    @staticmethod
     @torch.no_grad()
     def get_state_dict(
         module: nn.Module,
-        sharded_parameters: dict[str, ShardedParameter],
         state_dict_type: StateDictType = StateDictType.Local,
     ) -> dict[str, Tensor]:
         """
         Extracts module state dictionary in either `Local` or `Full` format.
 
         Args:
-            module: Target `nn.Module` wrapped by FSDP.
-            sharded_parameters: Dictionary with sharded parameters of the target module.
+            module: Target root `nn.Module` containing sharded submodules.
             state_dict_type: Target format (`StateDictType.Local` or `StateDictType.Full`).
 
         Returns:
@@ -52,21 +81,24 @@ class StateDictManager:
 
         """
         state_dict: dict[str, Tensor] = {}
+        sharded_parameters_dict = StateDictManager._collect_sharded_parameters(module)
 
         for parameter_name, parameter in module.named_parameters():
-            if parameter_name not in sharded_parameters:
+            if parameter_name not in sharded_parameters_dict:
                 tensor = parameter.data
             else:
-                parameter = sharded_parameters[parameter_name]
+                sharded_parameter = sharded_parameters_dict[parameter_name]
 
                 if state_dict_type == StateDictType.Local:
-                    tensor = parameter.dtensor
+                    tensor = sharded_parameter.dtensor
                 else:
-                    gathered = parameter._gathered_tensor
+                    gathered = sharded_parameter._gathered_tensor
                     tensor = (
                         gathered
                         if gathered is not None
-                        else FSDPAllGatherFunction.apply(parameter.local_shard, parameter)
+                        else FSDPAllGatherFunction.apply(
+                            sharded_parameter.local_shard, sharded_parameter
+                        )
                     )
 
             # Store detached copy to prevent state contamination
@@ -78,7 +110,6 @@ class StateDictManager:
     @torch.no_grad()
     def load_state_dict(
         module: nn.Module,
-        sharded_parameters: dict[str, ShardedParameter],
         state_dict: Mapping[str, Tensor | DTensor],
         state_dict_type: StateDictType = StateDictType.Local,
     ) -> None:
@@ -86,8 +117,7 @@ class StateDictManager:
         Loads a state dictionary checkpoint into sharded model parameters.
 
         Args:
-            module: Target `nn.Module` wrapped by FSDP.
-            sharded_parameters: Dictionary with sharded parameters of the target module.
+            module: Target root `nn.Module` containing sharded submodules.
             state_dict: Incoming map of parameter FQNs to tensors.
             state_dict_type: Format of incoming state_dict (`Local` or `Full`).
 
@@ -96,6 +126,7 @@ class StateDictManager:
 
         """
         module_named_parameters = dict(module.named_parameters())
+        sharded_parameters_dict = StateDictManager._collect_sharded_parameters(module)
 
         for sd_name, sd_tensor in state_dict.items():
             if sd_name not in module_named_parameters:
@@ -104,12 +135,12 @@ class StateDictManager:
                 )
 
             # Handle non-sharded parameters
-            if sd_name not in sharded_parameters:
+            if sd_name not in sharded_parameters_dict:
                 target_parameter = module_named_parameters[sd_name]
                 target_parameter.copy_(sd_tensor.to(target_parameter.device))
                 continue
 
-            parameter = sharded_parameters[sd_name]
+            parameter = sharded_parameters_dict[sd_name]
 
             if state_dict_type == StateDictType.Local:
                 # Handle incoming state dict tensor whether it is a DTensor or raw local Tensor
