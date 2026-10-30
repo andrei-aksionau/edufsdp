@@ -71,8 +71,8 @@ class TestHooks(DistributedTestBase):
             device_mesh=self.device_mesh,
         )
 
-        pre_hook = ForwardPreHook(sharded_parameter)
-        post_hook = ForwardPostHook(sharded_parameter)
+        pre_hook = ForwardPreHook({sharded_parameter.fqn: sharded_parameter})
+        post_hook = ForwardPostHook({sharded_parameter.fqn: sharded_parameter})
 
         # Initial state: sharded
         assert not sharded_parameter.is_gathered
@@ -109,8 +109,8 @@ class TestHooks(DistributedTestBase):
             device_mesh=self.device_mesh,
         )
 
-        backward_pre_hook = BackwardPreHook(sharded_parameter)
-        backward_post_hook = BackwardPostHook(sharded_parameter)
+        backward_pre_hook = BackwardPreHook({sharded_parameter.fqn: sharded_parameter})
+        backward_post_hook = BackwardPostHook({sharded_parameter.fqn: sharded_parameter})
 
         # Initial state: sharded
         assert not sharded_parameter.is_gathered

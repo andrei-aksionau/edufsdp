@@ -13,6 +13,7 @@ from edufsdp.sharded_parameter import ShardedParameter
 from tests.base.test_class import DistributedTestBase
 
 
+# TODO: test changes, like properties
 @pytest.mark.multi_rank
 class TestShardedParameter(DistributedTestBase):
     """

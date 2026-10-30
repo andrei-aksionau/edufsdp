@@ -3,18 +3,28 @@ Unit tests for edufsdp.fsdp covering module wrapping, parameter traversal, hooks
 dict delegation.
 """
 
-from unittest.mock import patch
-
 import pytest
 import torch
+from torch import nn
 
-from edufsdp.fsdp import FSDP
+from edufsdp.fsdp import fully_shard
 from edufsdp.hooks import BackwardPostHook, BackwardPreHook, ForwardPostHook, ForwardPreHook
 from edufsdp.sharded_parameter import ShardedParameter
-from edufsdp.state_dict import StateDictType
+from edufsdp.state_dict import StateDictManager
 from tests.base.test_class import DistributedTestBase
 
 
+# TODO: perhaps I need to put it into base model
+def _fully_shard_model(model: nn.Module, device_mesh) -> nn.Module:
+    """Recursively discovers and fully_shards all submodules owning parameters dynamically."""
+    for _, submodule in model.named_modules():
+        if any(p.requires_grad for p in submodule.parameters(recurse=False)):
+            fully_shard(submodule, device_mesh=device_mesh)
+    fully_shard(model, device_mesh=device_mesh)
+    return model
+
+
+# TODO: tests how wrapping works with different models and different wrapping strategies
 @pytest.mark.multi_rank
 class TestFSDP(DistributedTestBase):
     """
@@ -27,14 +37,16 @@ class TestFSDP(DistributedTestBase):
         Verifies that the sharded_parameters property correctly traverses the module tree
         and maps all parameters.
         """
-        fsdp_model = FSDP(self.base_model, self.device_mesh)
-        sharded_map = fsdp_model.sharded_parameters
+        fsdp_model = _fully_shard_model(self.base_model, self.device_mesh)
+        sharded_map = StateDictManager._collect_sharded_parameters(fsdp_model)
 
-        assert set(sharded_map.keys()) == {"fc1.weight", "fc2.weight"}
+        assert set(sharded_map.keys()) == {"fc1.weight", "fc2.weight"}, (
+            f"{sharded_map.keys()=}"
+        )
 
         for fqn, sharded_parameter in sharded_map.items():
             assert isinstance(sharded_parameter, ShardedParameter)
-            assert sharded_parameter.fqn == fqn
+            assert sharded_parameter.fqn == fqn, f"{sharded_parameter.fqn=}"
             _, expected_local_shape = self.expected_shapes[fqn]
             assert sharded_parameter.local_shard.shape == expected_local_shape
 
@@ -43,10 +55,10 @@ class TestFSDP(DistributedTestBase):
         Verifies that exact FSDP hook instances are registered on submodules owning
         parameters.
         """
-        fsdp_model = FSDP(self.base_model, self.device_mesh)
-        sharded_parameter_names = set(fsdp_model.sharded_parameters)
+        fsdp_model = _fully_shard_model(self.base_model, self.device_mesh)
+        sharded_parameter_names = set(StateDictManager._collect_sharded_parameters(fsdp_model))
 
-        for submodule_name, submodule in fsdp_model.inner_module.named_modules():
+        for submodule_name, submodule in fsdp_model.named_modules():
             submodule_parameter_names = {
                 f"{submodule_name}.{name}"
                 for name, _ in submodule.named_parameters(recurse=False)
@@ -77,55 +89,13 @@ class TestFSDP(DistributedTestBase):
             f"{sharded_parameter_names}"
         )
 
-    @patch("edufsdp.fsdp.StateDictManager.get_state_dict")
-    def test_state_dict_delegation_passes_all_sharded_parameters(
-        self, mock_get_state_dict
-    ) -> None:
-        """
-        Verifies that fsdp.state_dict delegates to StateDictManager without skipping any
-        sharded parameters.
-        """
-        fsdp_model = FSDP(self.base_model, self.device_mesh)
-        mock_get_state_dict.return_value = {"mock": "state_dict"}
-
-        result = fsdp_model.state_dict(StateDictType.Local)
-
-        mock_get_state_dict.assert_called_once()
-        _, passed_sharded_parameters, passed_type = mock_get_state_dict.call_args[0]
-
-        # Verify no sharded parameters were skipped or omitted
-        assert set(passed_sharded_parameters.keys()) == {"fc1.weight", "fc2.weight"}
-        assert passed_type == StateDictType.Local
-        assert result == {"mock": "state_dict"}
-
-    @patch("edufsdp.fsdp.StateDictManager.load_state_dict")
-    def test_load_state_dict_delegation_passes_all_sharded_parameters(
-        self, mock_load_state_dict
-    ) -> None:
-        """
-        Verifies that fsdp.load_state_dict delegates to StateDictManager with complete
-        sharded parameters.
-        """
-        fsdp_model = FSDP(self.base_model, self.device_mesh)
-        dummy_state_dict = {"fc1.weight": torch.zeros(2, 16)}
-
-        fsdp_model.load_state_dict(dummy_state_dict, state_dict_type=StateDictType.Local)
-
-        mock_load_state_dict.assert_called_once()
-        _, passed_sharded_parameters, passed_dict, passed_type = (
-            mock_load_state_dict.call_args[0]
-        )
-
-        assert set(passed_sharded_parameters.keys()) == {"fc1.weight", "fc2.weight"}
-        assert passed_dict == dummy_state_dict
-        assert passed_type == StateDictType.Local
-
     def test_fsdp_forward_and_backward_execution(self) -> None:
         """
         Verifies end-to-end forward and backward passes execute correctly through the FSDP
         wrapper.
         """
-        fsdp_model = FSDP(self.base_model, self.device_mesh)
+        fsdp_model = _fully_shard_model(self.base_model, self.device_mesh)
+        sharded_parameters = StateDictManager._collect_sharded_parameters(fsdp_model)
         batch_size = 4
 
         input_tensor = torch.randn(batch_size, 16)
@@ -139,8 +109,8 @@ class TestFSDP(DistributedTestBase):
         loss.backward()
 
         # 3. Verify gradients are correctly reduced and sharded across ranks
-        for fqn in fsdp_model.sharded_parameters:
-            parameter = getattr(fsdp_model.inner_module, fqn.split(".")[0]).weight
+        for fqn in sharded_parameters:
+            parameter = getattr(fsdp_model, fqn.split(".")[0]).weight
             assert parameter.grad is not None
             _, expected_local_shape = self.expected_shapes[fqn]
             assert parameter.grad.to_local().shape == expected_local_shape
