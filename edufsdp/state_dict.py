@@ -41,26 +41,19 @@ class StateDictManager:
             module: Target root `nn.Module` to inspect.
 
         Returns:
-            Dictionary mapping parameter FQNs to their `ShardedParameter` wrappers.
+            Dictionary mapping absolute parameter FQNs to their `ShardedParameter` wrappers.
 
         """
         sharded_parameters_dict: dict[str, ShardedParameter] = {}
 
-        def _walk(submodule: nn.Module, prefix: str = "") -> None:
+        for _, submodule in module.named_modules():
             if hasattr(submodule, "_sharded_parameters"):
-                submodule_parameters = cast(
+                sub_params = cast(
                     "dict[str, ShardedParameter]",
                     submodule._sharded_parameters,
                 )
-                for submodule_name, sharded_parameter in submodule_parameters.items():
-                    fqn = f"{prefix}{submodule_name}" if prefix else submodule_name
-                    sharded_parameters_dict[fqn] = sharded_parameter
+                sharded_parameters_dict.update(sub_params)
 
-            for child_name, child_module in submodule.named_children():
-                child_prefix = f"{prefix}{child_name}." if prefix else f"{child_name}."
-                _walk(child_module, prefix=child_prefix)
-
-        _walk(module)
         return sharded_parameters_dict
 
     @staticmethod

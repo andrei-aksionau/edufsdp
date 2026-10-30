@@ -65,7 +65,6 @@ class ShardedParameter:
 
         """
         self.fqn = fqn
-        self.parameter_name = fqn.split(".")[-1]
         self.module = module
         self.device_mesh = device_mesh
 
@@ -96,6 +95,17 @@ class ShardedParameter:
 
         # Reference holder for the full gathered tensor during execution
         self._gathered_tensor: Tensor | None = None
+
+    @property
+    def fqn(self) -> str:
+        """The Fully Qualified Name of the parameter."""
+        return self._fqn
+
+    @fqn.setter
+    def fqn(self, value: str) -> None:
+        """Sets the FQN and automatically updates the parameter basename."""
+        self._fqn = value
+        self.parameter_name = value.split(".")[-1]
 
     @property
     def local_shard(self) -> Tensor:
