@@ -76,6 +76,14 @@ class DistributedTestBase:
         torch.manual_seed(42)
         self.base_model = SimpleMLP().to(self.device)
 
+        self.batch_size = 2
+        self.dummy_input = torch.randn(
+            self.batch_size, self.base_model.input_dim, device=self.device, requires_grad=True
+        )
+        self.dummy_target = torch.randn(
+            self.batch_size, self.base_model.output_dim, device=self.device
+        )
+
         # Target expected tensor shapes: parameter_name -> (global_shape, local_shard_shape)
         self.expected_shapes = {
             "fc1.weight": (

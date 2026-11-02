@@ -4,13 +4,13 @@ confirming that states applied to already sharded FSDP parameters naturally inhe
 sharded shapes without requiring manual reallocation or re-sharding.
 """
 
-import copy
+from typing import Any
 
 import pytest
 import torch
+import torch.distributed as dist
 
-from edufsdp.fsdp import FSDP
-from tests.base.test_class import DistributedTestBase
+from tests.base.test_class import DistributedTestBase, FSDPType
 
 
 @pytest.mark.multi_rank
@@ -20,14 +20,20 @@ class TestOptimizerStates(DistributedTestBase):
     consistency.
     """
 
+    def setup_method(self, method: Any) -> None:
+        """Initializes fully sharded model via custom FSDP implementation."""
+        if not dist.is_initialized():
+            return
+        super().setup_method(method)
+
+        self.wrapped_model = self.fully_shard_model(FSDPType.CUSTOM)
+
     def test_optimizer_state_empty_before_step(self) -> None:
         """
         Verifies that optimizer states remain uninitialized across init, forward, and
         backward passes.
         """
-        model = copy.deepcopy(self.base_model)
-        wrapped_model = FSDP(model, device_mesh=self.device_mesh)
-        optimizer = torch.optim.Adam(wrapped_model.parameters(), lr=0.001)
+        optimizer = torch.optim.Adam(self.wrapped_model.parameters(), lr=0.001)
 
         # 1. State should be empty right after instantiation
         assert len(optimizer.state) == 0, (
@@ -35,10 +41,7 @@ class TestOptimizerStates(DistributedTestBase):
         )
 
         # 2. State should remain empty post-forward
-        dummy_input = torch.randn(
-            2, self.base_model.input_dim, device=self.device, requires_grad=True
-        )
-        output = wrapped_model(dummy_input)
+        output = self.wrapped_model(self.dummy_input)
         assert len(optimizer.state) == 0, "Optimizer state should be empty post-forward"
 
         # 3. State should remain empty post-backward (before step)
@@ -53,20 +56,15 @@ class TestOptimizerStates(DistributedTestBase):
         Verifies Adam optimizer state lazy creation, state keys, and local sharded shapes
         after step().
         """
-        model = copy.deepcopy(self.base_model)
-        wrapped_model = FSDP(model, device_mesh=self.device_mesh)
-        optimizer = torch.optim.Adam(wrapped_model.parameters(), lr=0.001)
+        optimizer = torch.optim.Adam(self.wrapped_model.parameters(), lr=0.001)
 
-        dummy_input = torch.randn(
-            2, self.base_model.input_dim, device=self.device, requires_grad=True
-        )
-        output = wrapped_model(dummy_input)
+        output = self.wrapped_model(self.dummy_input)
         output.sum().backward()
         optimizer.step()
 
         for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
-            parameter = getattr(getattr(wrapped_model.inner_module, layer_name), attr)
+            parameter = getattr(getattr(self.wrapped_model, layer_name), attr)
 
             # Ensure parameter is tracked inside optimizer state dict
             assert parameter in optimizer.state, (
@@ -98,20 +96,15 @@ class TestOptimizerStates(DistributedTestBase):
         Verifies non-Adam optimizer (SGD with momentum) state lazy creation and local
         sharded shapes after step().
         """
-        model = copy.deepcopy(self.base_model)
-        wrapped_model = FSDP(model, device_mesh=self.device_mesh)
-        optimizer = torch.optim.SGD(wrapped_model.parameters(), lr=0.01, momentum=0.9)
+        optimizer = torch.optim.SGD(self.wrapped_model.parameters(), lr=0.01, momentum=0.9)
 
-        dummy_input = torch.randn(
-            2, self.base_model.input_dim, device=self.device, requires_grad=True
-        )
-        output = wrapped_model(dummy_input)
+        output = self.wrapped_model(self.dummy_input)
         output.sum().backward()
         optimizer.step()
 
         for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
-            parameter = getattr(getattr(wrapped_model.inner_module, layer_name), attr)
+            parameter = getattr(getattr(self.wrapped_model, layer_name), attr)
 
             # Ensure parameter is tracked inside optimizer state dict
             assert parameter in optimizer.state, (
