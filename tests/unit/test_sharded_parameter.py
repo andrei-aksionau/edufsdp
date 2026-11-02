@@ -13,7 +13,6 @@ from edufsdp.sharded_parameter import ShardedParameter
 from tests.base.test_class import DistributedTestBase
 
 
-# TODO: test changes, like properties
 @pytest.mark.multi_rank
 class TestShardedParameter(DistributedTestBase):
     """
@@ -113,3 +112,25 @@ class TestShardedParameter(DistributedTestBase):
         expected_rank_chunk = original_data[start_idx:end_idx]
 
         torch.testing.assert_close(sharded_parameter.local_shard, expected_rank_chunk)
+
+    def test_sharded_parameter_fqn_getter_setter(self) -> None:
+        """Verifies that updating the fqn property automatically updates parameter_name."""
+        layer = self.base_model.fc1
+        initial_fqn = "fc1.weight"
+
+        sharded_parameter = ShardedParameter(
+            fqn=initial_fqn,
+            module=layer,
+            parameter=nn.Parameter(layer.weight),
+            device_mesh=self.device_mesh,
+        )
+
+        assert sharded_parameter.fqn == initial_fqn
+        assert sharded_parameter.parameter_name == "weight"
+
+        # Update fqn to a hierarchical path (simulating parent/block sharding)
+        new_fqn = "transformer_block_1.fc1.weight"
+        sharded_parameter.fqn = new_fqn
+
+        assert sharded_parameter.fqn == new_fqn
+        assert sharded_parameter.parameter_name == "weight"

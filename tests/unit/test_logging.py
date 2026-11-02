@@ -19,7 +19,7 @@ from tests.base.test_class import DistributedTestBase
 class TestASCIIVisualizer:
     """Test suite for ASCIIVisualizer shard bar rendering and transition state mapping."""
 
-    @pytest.mark.parametrize("world_size", [1, 2, 4])
+    @pytest.mark.parametrize("world_size", (1, 2, 4))
     def test_ascii_visualizer_shard_bar_rendering(self, world_size: int) -> None:
         """Verifies rank shard bar rendering across different world sizes."""
         bar_width = 16

@@ -77,6 +77,7 @@ class DistributedTestBase:
         self.base_model = SimpleMLP().to(self.device)
 
         self.batch_size = 2
+        torch.manual_seed(42 + self.rank)
         self.dummy_input = torch.randn(
             self.batch_size, self.base_model.input_dim, device=self.device, requires_grad=True
         )

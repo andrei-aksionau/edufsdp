@@ -80,12 +80,7 @@ class TestOptimizerStates(DistributedTestBase):
                     f"for {parameter_name}"
                 )
 
-                tensor_val = (
-                    state[state_key].to_local()
-                    if hasattr(state[state_key], "to_local")
-                    else state[state_key]
-                )
-
+                tensor_val = state[state_key].to_local()
                 assert tensor_val.shape == expected_local_shape, (
                     f"Rank {self.rank}: {parameter_name} state '{state_key}' shape mismatch - "
                     f"Got {tensor_val.shape}, Expected {expected_local_shape}"
@@ -119,12 +114,7 @@ class TestOptimizerStates(DistributedTestBase):
                 f"for {parameter_name}"
             )
 
-            tensor_val = (
-                state["momentum_buffer"].to_local()
-                if hasattr(state["momentum_buffer"], "to_local")
-                else state["momentum_buffer"]
-            )
-
+            tensor_val = state["momentum_buffer"].to_local()
             assert tensor_val.shape == expected_local_shape, (
                 f"Rank {self.rank}: {parameter_name} state 'momentum_buffer' shape mismatch - "
                 f"Got {tensor_val.shape}, Expected {expected_local_shape}"

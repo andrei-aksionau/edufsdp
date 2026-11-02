@@ -31,12 +31,6 @@ class TestCustomTrainingConvergence(DistributedTestBase):
         self.optimizer = torch.optim.Adam(self.wrapped_model.parameters(), lr=0.1)
         self.criterion = nn.MSELoss()
 
-        torch.manual_seed(100 + self.rank)
-        self.x = torch.randn(
-            2, self.base_model.input_dim, device=self.device, requires_grad=True
-        )
-        self.target = torch.randn(2, self.base_model.output_dim, device=self.device)
-
     def test_loss_decreases_across_steps(self) -> None:
         """
         Verifies that training loss successfully decreases over
@@ -46,8 +40,8 @@ class TestCustomTrainingConvergence(DistributedTestBase):
 
         for _ in range(5):
             self.optimizer.zero_grad()
-            output = self.wrapped_model(self.x)
-            loss = self.criterion(output, self.target)
+            output = self.wrapped_model(self.dummy_input)
+            loss = self.criterion(output, self.dummy_target)
             loss.backward()
             self.optimizer.step()
             losses.append(loss.item())
@@ -64,8 +58,8 @@ class TestCustomTrainingConvergence(DistributedTestBase):
         """Verifies that intermediate loss values do not become NaN or Inf during training."""
         for step in range(5):
             self.optimizer.zero_grad()
-            output = self.wrapped_model(self.x)
-            loss = self.criterion(output, self.target)
+            output = self.wrapped_model(self.dummy_input)
+            loss = self.criterion(output, self.dummy_target)
 
             assert not torch.isnan(loss).item(), (
                 f"[Rank {self.rank}] Loss became NaN at step {step}!"
@@ -84,8 +78,8 @@ class TestCustomTrainingConvergence(DistributedTestBase):
         }
 
         self.optimizer.zero_grad()
-        output = self.wrapped_model(self.x)
-        loss = self.criterion(output, self.target)
+        output = self.wrapped_model(self.dummy_input)
+        loss = self.criterion(output, self.dummy_target)
         loss.backward()
         self.optimizer.step()
 
@@ -113,9 +107,9 @@ class TestCustomTrainingConvergence(DistributedTestBase):
         """
         # 1. Run first backward pass and capture baseline gradients
         self.optimizer.zero_grad()
-        output1 = self.wrapped_model(self.x)
-        loss1 = self.criterion(output1, self.target)
-        loss1.backward()
+        output_1 = self.wrapped_model(self.dummy_input)
+        loss_1 = self.criterion(output_1, self.dummy_target)
+        loss_1.backward()
 
         single_pass_grads = {
             name: param.grad.to_local().clone()
@@ -124,9 +118,9 @@ class TestCustomTrainingConvergence(DistributedTestBase):
         }
 
         # 2. Run second backward pass without zeroing (accumulating gradients)
-        output2 = self.wrapped_model(self.x)
-        loss2 = self.criterion(output2, self.target)
-        loss2.backward()
+        output_2 = self.wrapped_model(self.dummy_input)
+        loss_2 = self.criterion(output_2, self.dummy_target)
+        loss_2.backward()
 
         # 3. Verify gradients accumulated properly and retained sharded shapes
         for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():

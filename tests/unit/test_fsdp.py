@@ -3,8 +3,11 @@ Unit tests for edufsdp.fsdp covering module wrapping, parameter traversal, hooks
 dict delegation.
 """
 
+from typing import Any
+
 import pytest
 import torch
+from torch import distributed as dist
 
 from edufsdp.hooks import BackwardPostHook, BackwardPreHook, ForwardPostHook, ForwardPreHook
 from edufsdp.sharded_parameter import ShardedParameter
@@ -20,21 +23,28 @@ class TestFSDP(DistributedTestBase):
     delegation.
     """
 
+    def setup_method(self, method: Any) -> None:
+        """Initializes fully sharded model via custom FSDP implementation."""
+        if not dist.is_initialized():
+            return
+        super().setup_method(method)
+
+        self.wrapped_model = self.fully_shard_model(FSDPType.CUSTOM)
+        self.sharded_parameters = StateDictManager._collect_sharded_parameters(
+            self.wrapped_model
+        )
+
     def test_sharded_parameters_property_completeness(self) -> None:
         """
         Verifies that the sharded_parameters property correctly traverses the module tree
         and maps all parameters.
         """
-        fsdp_model = self.fully_shard_model(FSDPType.CUSTOM)
-        sharded_map = StateDictManager._collect_sharded_parameters(fsdp_model)
 
-        assert set(sharded_map.keys()) == {"fc1.weight", "fc2.weight"}, (
-            f"{sharded_map.keys()=}"
-        )
+        assert set(self.sharded_parameters.keys()) == {"fc1.weight", "fc2.weight"}
 
-        for fqn, sharded_parameter in sharded_map.items():
+        for fqn, sharded_parameter in self.sharded_parameters.items():
             assert isinstance(sharded_parameter, ShardedParameter)
-            assert sharded_parameter.fqn == fqn, f"{sharded_parameter.fqn=}"
+            assert sharded_parameter.fqn == fqn
             _, expected_local_shape = self.expected_shapes[fqn]
             assert sharded_parameter.local_shard.shape == expected_local_shape
 
@@ -43,10 +53,9 @@ class TestFSDP(DistributedTestBase):
         Verifies that exact FSDP hook instances are registered on submodules owning
         parameters.
         """
-        fsdp_model = self.fully_shard_model(FSDPType.CUSTOM)
-        sharded_parameter_names = set(StateDictManager._collect_sharded_parameters(fsdp_model))
+        sharded_parameter_names = set(self.sharded_parameters)
 
-        for submodule_name, submodule in fsdp_model.named_modules():
+        for submodule_name, submodule in self.wrapped_model.named_modules():
             submodule_parameter_names = {
                 f"{submodule_name}.{name}"
                 for name, _ in submodule.named_parameters(recurse=False)
@@ -82,23 +91,18 @@ class TestFSDP(DistributedTestBase):
         Verifies end-to-end forward and backward passes execute correctly through the FSDP
         wrapper.
         """
-        fsdp_model = self.fully_shard_model(FSDPType.CUSTOM)
-        sharded_parameters = StateDictManager._collect_sharded_parameters(fsdp_model)
-        batch_size = 4
-
-        input_tensor = torch.randn(batch_size, 16)
 
         # 1. Forward Pass
-        output = fsdp_model(input_tensor)
-        assert output.shape == torch.Size([batch_size, 8])
+        output = self.wrapped_model(self.dummy_input)
+        assert output.shape == torch.Size([self.batch_size, self.base_model.output_dim])
 
         # 2. Backward Pass
         loss = output.sum()
         loss.backward()
 
         # 3. Verify gradients are correctly reduced and sharded across ranks
-        for fqn in sharded_parameters:
-            parameter = getattr(fsdp_model, fqn.split(".")[0]).weight
+        for fqn in self.sharded_parameters:
+            parameter = getattr(self.wrapped_model, fqn.split(".")[0]).weight
             assert parameter.grad is not None
             _, expected_local_shape = self.expected_shapes[fqn]
             assert parameter.grad.to_local().shape == expected_local_shape

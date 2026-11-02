@@ -24,7 +24,7 @@ class TestParityBase(DistributedTestBase):
         self.wrapped_custom = self.fully_shard_model(FSDPType.CUSTOM)
         self.wrapped_reference = self.fully_shard_model(FSDPType.REFERENCE)
 
-        self.custom_sharded_parameters = StateDictManager._collect_sharded_parameters(
+        self.sharded_parameters_custom = StateDictManager._collect_sharded_parameters(
             self.wrapped_custom
         )
 
@@ -190,7 +190,7 @@ class TestExecutionLifecycleParity(TestParityBase):
             # Both must be sharded to local shape initially
             assert custom_param.to_local().shape == expected_local_shape
             assert reference_param.to_local().shape == expected_local_shape
-            assert not self.custom_sharded_parameters[parameter_name].is_gathered
+            assert not self.sharded_parameters_custom[parameter_name].is_gathered
 
     def test_forward_parameters_are_gathered(self) -> None:
         """
@@ -253,7 +253,7 @@ class TestExecutionLifecycleParity(TestParityBase):
 
             assert custom_param.to_local().shape == expected_local_shape
             assert reference_param.to_local().shape == expected_local_shape
-            assert not self.custom_sharded_parameters[parameter_name].is_gathered
+            assert not self.sharded_parameters_custom[parameter_name].is_gathered
 
     def test_backward_parameters_are_gathered(self) -> None:
         """
@@ -343,7 +343,7 @@ class TestExecutionLifecycleParity(TestParityBase):
 
             assert custom_param.to_local().shape == expected_local_shape
             assert reference_param.to_local().shape == expected_local_shape
-            assert not self.custom_sharded_parameters[parameter_name].is_gathered
+            assert not self.sharded_parameters_custom[parameter_name].is_gathered
 
 
 @pytest.mark.multi_rank
