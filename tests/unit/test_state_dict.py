@@ -3,27 +3,14 @@ Unit tests for edufsdp.state_dict covering Local and Full state dict extraction,
 loading, and parameter state preservation.
 """
 
-import copy
-
 import pytest
 import torch
-from torch import nn
 from torch.distributed.tensor import DTensor
 
-from edufsdp.fsdp import fully_shard
 from edufsdp.state_dict import StateDictManager, StateDictType
-from tests.base.test_class import DistributedTestBase
+from tests.base.test_class import DistributedTestBase, FSDPType
 
 # TODO: update tests to include obtaining collection of sharded parameters
-
-
-def _fully_shard_model(model: nn.Module, device_mesh) -> nn.Module:
-    """Recursively discovers and fully_shards all submodules owning parameters dynamically."""
-    for _, submodule in model.named_modules():
-        if any(p.requires_grad for p in submodule.parameters(recurse=False)):
-            fully_shard(submodule, device_mesh=device_mesh)
-    fully_shard(model, device_mesh=device_mesh)
-    return model
 
 
 @pytest.mark.multi_rank
@@ -38,7 +25,7 @@ class TestStateDictManager(DistributedTestBase):
         Verifies extraction of Local state dict returns rank-local shard shapes
         and values.
         """
-        fsdp_model = _fully_shard_model(self.base_model, self.device_mesh)
+        fsdp_model = self.fully_shard_model(FSDPType.CUSTOM)
         state_dict = StateDictManager.get_state_dict(
             fsdp_model,
             StateDictType.Local,
@@ -61,7 +48,7 @@ class TestStateDictManager(DistributedTestBase):
         Verifies extraction of Full state dict consolidates global tensors
         matching the unsharded baseline.
         """
-        fsdp_model = _fully_shard_model(copy.deepcopy(self.base_model), self.device_mesh)
+        fsdp_model = self.fully_shard_model(FSDPType.CUSTOM)
         full_state_dict = StateDictManager.get_state_dict(
             fsdp_model,
             StateDictType.Full,
@@ -82,7 +69,7 @@ class TestStateDictManager(DistributedTestBase):
         Verifies that extracting a Full state dict gathers tensors during extraction
         but leaves parameters sharded.
         """
-        fsdp_model = _fully_shard_model(self.base_model, self.device_mesh)
+        fsdp_model = self.fully_shard_model(FSDPType.CUSTOM)
         sharded_parameters = StateDictManager._collect_sharded_parameters(fsdp_model)
 
         # Confirm all parameters start sharded
@@ -109,7 +96,7 @@ class TestStateDictManager(DistributedTestBase):
 
     def test_load_state_dict_local_format(self) -> None:
         """Verifies reloading Local format state dict updates rank-local shards correctly."""
-        fsdp_model_src = _fully_shard_model(copy.deepcopy(self.base_model), self.device_mesh)
+        fsdp_model_src = self.fully_shard_model(FSDPType.CUSTOM)
         local_state_dict = StateDictManager.get_state_dict(
             fsdp_model_src,
             StateDictType.Local,
@@ -120,9 +107,7 @@ class TestStateDictManager(DistributedTestBase):
             for tensor in local_state_dict.values():
                 tensor.add_(5.0)
 
-        fsdp_model_target = _fully_shard_model(
-            copy.deepcopy(self.base_model), self.device_mesh
-        )
+        fsdp_model_target = self.fully_shard_model(FSDPType.CUSTOM)
         StateDictManager.load_state_dict(
             fsdp_model_target,
             local_state_dict,
@@ -142,15 +127,13 @@ class TestStateDictManager(DistributedTestBase):
         Verifies reloading Full format state dict
         correctly redistributes global tensors across ranks.
         """
-        fsdp_model_src = _fully_shard_model(copy.deepcopy(self.base_model), self.device_mesh)
+        fsdp_model_src = self.fully_shard_model(FSDPType.CUSTOM)
         full_state_dict = StateDictManager.get_state_dict(
             fsdp_model_src,
             StateDictType.Full,
         )
 
-        fsdp_model_target = _fully_shard_model(
-            copy.deepcopy(self.base_model), self.device_mesh
-        )
+        fsdp_model_target = self.fully_shard_model(FSDPType.CUSTOM)
         StateDictManager.load_state_dict(
             fsdp_model_target,
             full_state_dict,
@@ -170,7 +153,7 @@ class TestStateDictManager(DistributedTestBase):
         Verifies KeyError is raised when incoming state dict
         contains a parameter not present in module.
         """
-        fsdp_model = _fully_shard_model(self.base_model, self.device_mesh)
+        fsdp_model = self.fully_shard_model(FSDPType.CUSTOM)
         invalid_state_dict = {"nonexistent.weight": torch.zeros(2, 2)}
 
         with pytest.raises(KeyError):

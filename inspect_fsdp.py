@@ -240,6 +240,7 @@ def main() -> None:
     model = MLP()
     fully_shard(model.layer1, mesh)
     fully_shard(model.layer2, mesh)
+    fully_shard(model, mesh)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
     criterion = nn.MSELoss()
 

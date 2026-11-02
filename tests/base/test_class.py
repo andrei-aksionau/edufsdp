@@ -1,5 +1,7 @@
 """Base test harness and model definitions for distributed unit tests."""
 
+import copy
+from enum import Enum
 from typing import Any
 
 import torch
@@ -7,6 +9,16 @@ import torch.distributed as dist
 import torch.nn as nn
 from torch import Tensor
 from torch.distributed.device_mesh import init_device_mesh
+from torch.distributed.fsdp import fully_shard as reference_fully_shard
+
+from edufsdp.fsdp import fully_shard as custom_fully_shard
+
+
+class FSDPType(Enum):
+    """Supported types of model sharding implementation."""
+
+    REFERENCE = "reference"  # PyTorch's implementation
+    CUSTOM = "custom"  # edufsdp implementation
 
 
 class SimpleMLP(nn.Module):
@@ -81,3 +93,21 @@ class DistributedTestBase:
         if dist.is_initialized():
             dist.barrier()
             dist.destroy_process_group()
+
+    def fully_shard_model(self, sharding_implementation_type: FSDPType) -> nn.Module:
+        """Recursively discovers and fully_shards all submodules owning parameters dynamically."""
+        model = copy.deepcopy(self.base_model)
+
+        for _, submodule in model.named_modules():
+            if any(p.requires_grad for p in submodule.parameters(recurse=False)):
+                if sharding_implementation_type == FSDPType.REFERENCE:
+                    reference_fully_shard(submodule, mesh=self.device_mesh)
+                else:
+                    custom_fully_shard(submodule, device_mesh=self.device_mesh)
+
+        if sharding_implementation_type == FSDPType.REFERENCE:
+            reference_fully_shard(model, mesh=self.device_mesh)
+        else:
+            custom_fully_shard(model, device_mesh=self.device_mesh)
+
+        return model

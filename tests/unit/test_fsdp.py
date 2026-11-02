@@ -5,23 +5,11 @@ dict delegation.
 
 import pytest
 import torch
-from torch import nn
 
-from edufsdp.fsdp import fully_shard
 from edufsdp.hooks import BackwardPostHook, BackwardPreHook, ForwardPostHook, ForwardPreHook
 from edufsdp.sharded_parameter import ShardedParameter
 from edufsdp.state_dict import StateDictManager
-from tests.base.test_class import DistributedTestBase
-
-
-# TODO: perhaps I need to put it into base model
-def _fully_shard_model(model: nn.Module, device_mesh) -> nn.Module:
-    """Recursively discovers and fully_shards all submodules owning parameters dynamically."""
-    for _, submodule in model.named_modules():
-        if any(p.requires_grad for p in submodule.parameters(recurse=False)):
-            fully_shard(submodule, device_mesh=device_mesh)
-    fully_shard(model, device_mesh=device_mesh)
-    return model
+from tests.base.test_class import DistributedTestBase, FSDPType
 
 
 # TODO: tests how wrapping works with different models and different wrapping strategies
@@ -37,7 +25,7 @@ class TestFSDP(DistributedTestBase):
         Verifies that the sharded_parameters property correctly traverses the module tree
         and maps all parameters.
         """
-        fsdp_model = _fully_shard_model(self.base_model, self.device_mesh)
+        fsdp_model = self.fully_shard_model(FSDPType.CUSTOM)
         sharded_map = StateDictManager._collect_sharded_parameters(fsdp_model)
 
         assert set(sharded_map.keys()) == {"fc1.weight", "fc2.weight"}, (
@@ -55,7 +43,7 @@ class TestFSDP(DistributedTestBase):
         Verifies that exact FSDP hook instances are registered on submodules owning
         parameters.
         """
-        fsdp_model = _fully_shard_model(self.base_model, self.device_mesh)
+        fsdp_model = self.fully_shard_model(FSDPType.CUSTOM)
         sharded_parameter_names = set(StateDictManager._collect_sharded_parameters(fsdp_model))
 
         for submodule_name, submodule in fsdp_model.named_modules():
@@ -94,7 +82,7 @@ class TestFSDP(DistributedTestBase):
         Verifies end-to-end forward and backward passes execute correctly through the FSDP
         wrapper.
         """
-        fsdp_model = _fully_shard_model(self.base_model, self.device_mesh)
+        fsdp_model = self.fully_shard_model(FSDPType.CUSTOM)
         sharded_parameters = StateDictManager._collect_sharded_parameters(fsdp_model)
         batch_size = 4
 
