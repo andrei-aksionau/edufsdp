@@ -57,11 +57,14 @@ def _spawn_worker(
         os.environ.pop("GLOO_SOCKET_IFNAME", None)
 
     # Initialize PyTorch distributed process group
+    # Fallback to 28 seconds (slightly shorter than pytest timeout) for normal runs,
+    # allow override during debugging
+    timeout_seconds = int(os.environ.get("DIST_TIMEOUT_SECONDS", 28))
     dist.init_process_group(
         backend="gloo",
         rank=rank,
         world_size=world_size,
-        timeout=timedelta(seconds=28),  # slightly shorter than pytest timeout
+        timeout=timedelta(seconds=timeout_seconds),
     )
 
     # Execute class methods with bound `self` instance, or plain functions directly
