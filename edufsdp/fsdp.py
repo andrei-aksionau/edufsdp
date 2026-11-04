@@ -81,8 +81,7 @@ def fully_shard(module: nn.Module, device_mesh: DeviceMesh) -> nn.Module:
             )
             updated_params: dict[str, ShardedParameter] = {}
             for old_key, sharded_param in existing_params.items():
-                param_basename = old_key.split(".")[-1]
-                absolute_fqn = f"{prefix}.{param_basename}" if prefix else param_basename
+                absolute_fqn = f"{prefix}.{old_key}" if prefix else old_key
                 sharded_param.fqn = absolute_fqn  # Property setter updates name & fqn
                 updated_params[absolute_fqn] = sharded_param
             object.__setattr__(submodule, "_sharded_parameters", updated_params)

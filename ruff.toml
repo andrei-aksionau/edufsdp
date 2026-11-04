@@ -69,6 +69,8 @@ line-length = 95
 "tests/**" = [
  "missing-blank-line-after-summary",  # 1 blank line required between summary line and description
  "print",  # T201: `print` found
+ "undocumented-public-init",  # D107: Missing docstring in `__init__`
+ "undocumented-public-method",  # D102: Missing docstring in public method
  "unused-function-argument",
  "ANN",  # Type annotations
  "DOC",  # Disable all docstring rules for tests

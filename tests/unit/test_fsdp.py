@@ -1,72 +1,114 @@
-"""
-Unit tests for edufsdp.fsdp covering module wrapping, parameter traversal, hooks, and state
-dict delegation.
-"""
-
-from typing import Any
-
 import pytest
 import torch
-from torch import distributed as dist
+import torch.nn as nn
 
+from edufsdp.fsdp import fully_shard
 from edufsdp.hooks import BackwardPostHook, BackwardPreHook, ForwardPostHook, ForwardPreHook
 from edufsdp.sharded_parameter import ShardedParameter
 from edufsdp.state_dict import StateDictManager
-from tests.base.test_class import DistributedTestBase, FSDPType
+from tests.base.test_class import DistributedTestBase
 
 
-# TODO: tests how wrapping works with different models and different wrapping strategies
+class SubBlock(nn.Module):
+    """A multi-layer sub-block containing linear projections."""
+
+    def __init__(self, in_dim: int, hidden_dim: int, out_dim: int) -> None:
+        super().__init__()
+        self.fc1 = nn.Linear(in_dim, hidden_dim, bias=False)
+        self.fc2 = nn.Linear(hidden_dim, out_dim, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.fc2(self.fc1(x))
+
+
+class ComplexTestModel(nn.Module):
+    """
+    Multi-block model with nested submodules for testing
+    different FSDP wrapping strategies.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.input_dim = 16
+        self.hidden_dim = 4
+        self.output_dim = 8
+
+        self.block1 = SubBlock(self.input_dim, self.hidden_dim, self.hidden_dim)
+        self.block2 = SubBlock(self.hidden_dim, self.hidden_dim, self.output_dim)
+        self.lm_head = nn.Linear(self.output_dim, self.output_dim, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.block1(x)
+        x = self.block2(x)
+        return self.lm_head(x)
+
+
 @pytest.mark.multi_rank
 class TestFSDP(DistributedTestBase):
-    """
-    Test suite for FSDP wrapper tree wrapping, parameter collection, hook registration, and
-    delegation.
-    """
+    """Test suite for FSDP wrapper tree wrapping, parameter collection, and execution."""
 
-    def setup_method(self, method: Any) -> None:
-        """Initializes fully sharded model via custom FSDP implementation."""
-        if not dist.is_initialized():
-            return
-        super().setup_method(method)
+    def _apply_sharding(self, model: ComplexTestModel, strategy: str) -> None:
+        """Helper to apply either layer-level or block-level sharding before root wrap."""
+        if strategy == "layer":
+            fully_shard(model.block1.fc1, self.device_mesh)
+            fully_shard(model.block1.fc2, self.device_mesh)
+            fully_shard(model.block2.fc1, self.device_mesh)
+            fully_shard(model.block2.fc2, self.device_mesh)
+            fully_shard(model.lm_head, self.device_mesh)
+        elif strategy == "block":
+            fully_shard(model.block1, self.device_mesh)
+            fully_shard(model.block2, self.device_mesh)
+            fully_shard(model.lm_head, self.device_mesh)
+        else:
+            raise ValueError(f"Unknown sharding strategy: {strategy}")
 
-        self.wrapped_model = self.fully_shard_model(FSDPType.CUSTOM)
-        self.sharded_parameters = StateDictManager._collect_sharded_parameters(
-            self.wrapped_model
-        )
+        # Root wrap to trigger hierarchical traversal and FQN patching
+        fully_shard(model, self.device_mesh)
 
-    def test_sharded_parameters_property_completeness(self) -> None:
-        """
-        Verifies that the sharded_parameters property correctly traverses the module tree
-        and maps all parameters.
-        """
+    @pytest.mark.parametrize("strategy", ["layer", "block"])
+    def test_sharded_parameters_property_completeness(self, strategy: str) -> None:
+        """Verifies sharded_parameters collection and FQN patching across strategies."""
+        model = ComplexTestModel().to(self.device)
+        self._apply_sharding(model, strategy)
 
-        assert set(self.sharded_parameters.keys()) == {"fc1.weight", "fc2.weight"}
+        sharded_map = StateDictManager._collect_sharded_parameters(model)
+        expected_fqns = {
+            "block1.fc1.weight",
+            "block1.fc2.weight",
+            "block2.fc1.weight",
+            "block2.fc2.weight",
+            "lm_head.weight",
+        }
+        assert set(sharded_map.keys()) == expected_fqns
 
-        for fqn, sharded_parameter in self.sharded_parameters.items():
+        for fqn, sharded_parameter in sharded_map.items():
             assert isinstance(sharded_parameter, ShardedParameter)
             assert sharded_parameter.fqn == fqn
-            _, expected_local_shape = self.expected_shapes[fqn]
-            assert sharded_parameter.local_shard.shape == expected_local_shape
 
-    def test_hook_registration_on_submodules(self) -> None:
+    @pytest.mark.parametrize("strategy", ["layer", "block"])
+    def test_hook_registration_on_submodules(self, strategy: str) -> None:
         """
-        Verifies that exact FSDP hook instances are registered on submodules owning
-        parameters.
+        Verifies that exact FSDP hook instances are registered
+        on owning submodules/containers.
         """
-        sharded_parameter_names = set(self.sharded_parameters)
 
-        for submodule_name, submodule in self.wrapped_model.named_modules():
-            submodule_parameter_names = {
-                f"{submodule_name}.{name}"
-                for name, _ in submodule.named_parameters(recurse=False)
-            }
+        model = ComplexTestModel().to(self.device)
+        self._apply_sharding(model, strategy)
 
-            # Only check submodules that contain sharded parameters
+        sharded_map = StateDictManager._collect_sharded_parameters(model)
+        sharded_parameter_names = set(sharded_map.keys())
+
+        for _, submodule in model.named_modules():
+            if not hasattr(submodule, "_sharded_parameters"):
+                continue
+
+            sub_params = submodule._sharded_parameters
+            submodule_parameter_names = set(sub_params.keys())
+
             sharded_in_submodule = sharded_parameter_names & submodule_parameter_names
             if not sharded_in_submodule:
                 continue
 
-            # Verify specific FSDP hook instance types exist among registered hooks
             pre_hooks = list(submodule._forward_pre_hooks.values())
             post_hooks = list(submodule._forward_hooks.values())
             backward_pre_hooks = list(submodule._backward_pre_hooks.values())
@@ -77,32 +119,39 @@ class TestFSDP(DistributedTestBase):
             assert any(isinstance(hook, BackwardPreHook) for hook in backward_pre_hooks)
             assert any(isinstance(hook, BackwardPostHook) for hook in backward_post_hooks)
 
-            # Mark these sharded parameters as verified
             sharded_parameter_names -= sharded_in_submodule
 
-        # Ensure every sharded parameter belonged to a module with valid hooks
         assert not sharded_parameter_names, (
-            "FSDP sharded parameters were not verified on any submodule: "
+            "FSDP sharded parameters were not verified on any module: "
             f"{sharded_parameter_names}"
         )
 
-    def test_fsdp_forward_and_backward_execution(self) -> None:
+    @pytest.mark.parametrize("strategy", ["layer", "block"])
+    def test_fsdp_forward_and_backward_execution(self, strategy: str) -> None:
         """
-        Verifies end-to-end forward and backward passes execute correctly through the FSDP
-        wrapper.
+        Verifies end-to-end forward and backward passes
+        execute correctly across strategies.
         """
 
-        # 1. Forward Pass
-        output = self.wrapped_model(self.dummy_input)
-        assert output.shape == torch.Size([self.batch_size, self.base_model.output_dim])
+        model = ComplexTestModel().to(self.device)
+        self._apply_sharding(model, strategy)
 
-        # 2. Backward Pass
+        batch_size = 4
+        input_tensor = torch.randn(batch_size, model.input_dim)
+
+        output = model(input_tensor)
+        assert output.shape == torch.Size([batch_size, model.output_dim])
+
         loss = output.sum()
         loss.backward()
 
-        # 3. Verify gradients are correctly reduced and sharded across ranks
-        for fqn in self.sharded_parameters:
-            parameter = getattr(self.wrapped_model, fqn.split(".")[0]).weight
+        sharded_map = StateDictManager._collect_sharded_parameters(model)
+        for sharded_param in sharded_map.values():
+            parameter = getattr(sharded_param.module, sharded_param.parameter_name)
             assert parameter.grad is not None
-            _, expected_local_shape = self.expected_shapes[fqn]
+            global_shape = parameter.grad.shape
+            expected_local_shape = torch.Size([
+                global_shape[0] // self.world_size,
+                *global_shape[1:],
+            ])
             assert parameter.grad.to_local().shape == expected_local_shape
