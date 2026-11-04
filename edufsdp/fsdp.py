@@ -40,16 +40,15 @@ Execution lifecycle for each submodule:
 
 from typing import TYPE_CHECKING, cast
 
-import torch.nn as nn
-
 from edufsdp.hooks import BackwardPostHook, BackwardPreHook, ForwardPostHook, ForwardPreHook
 from edufsdp.sharded_parameter import ShardedParameter
 
 if TYPE_CHECKING:
+    import torch.nn as nn
     from torch.distributed.device_mesh import DeviceMesh
 
 
-def fully_shard[ModuleT: nn.Module](module: ModuleT, device_mesh: DeviceMesh) -> ModuleT:
+def fully_shard(module: nn.Module, device_mesh: DeviceMesh) -> nn.Module:
     """
     Shards a PyTorch module and its entire un-sharded subtree as a single FSDP unit.
 
