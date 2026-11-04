@@ -38,10 +38,10 @@ uv sync
 To watch live weight sharding visualizations, hook executions, loss reduction, and state saving in action across multiple CPU worker processes, execute the root-level shell script:
 
 ```bash
-./run_inspect_fsdp.sh
+./run_demo.sh
 ```
 
-This script automates `torchrun` across 6 CPU processes using the Gloo backend to execute `inspect_fsdp.py`, running a live training iteration with step-by-step ASCII memory state logging and checkpoint verification.
+This script automates `torchrun` across 6 CPU processes using the Gloo backend to execute `demo.py`, running a live training iteration with step-by-step ASCII memory state logging and checkpoint verification.
 
 Here is an example output:
 
