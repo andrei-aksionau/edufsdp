@@ -193,7 +193,7 @@ class ForwardPreHook:
         Initializes the hook with its target sharded parameters.
 
         Args:
-            sharded_parameters: Dictionary of target sharded parameter instances managed by this hook.
+            sharded_parameters: Dictionary of target sharded parameters managed by this hook.
 
         """
         self.sharded_parameters = sharded_parameters
@@ -232,7 +232,7 @@ class ForwardPostHook:
         Initializes the hook with its target sharded parameters.
 
         Args:
-            sharded_parameters: Dictionary of target sharded parameter instances managed by this hook.
+            sharded_parameters: Dictionary of target sharded parameters managed by this hook.
 
         """
         self.sharded_parameters = sharded_parameters
@@ -269,7 +269,7 @@ class BackwardPreHook:
         Initializes the hook with its target sharded parameters.
 
         Args:
-            sharded_parameters: Dictionary of target sharded parameter instances managed by this hook.
+            sharded_parameters: Dictionary of target sharded parameters managed by this hook.
 
         """
         self.sharded_parameters = sharded_parameters
@@ -303,7 +303,7 @@ class BackwardPostHook:
         Initializes the hook with its target sharded parameters.
 
         Args:
-            sharded_parameters: Dictionary of target sharded parameter instances managed by this hook.
+            sharded_parameters: Dictionary of target sharded parameters managed by this hook.
 
         """
         self.sharded_parameters = sharded_parameters

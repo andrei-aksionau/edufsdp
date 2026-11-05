@@ -104,7 +104,11 @@ class DistributedTestBase:
             dist.destroy_process_group()
 
     def fully_shard_model(self, sharding_implementation_type: FSDPType) -> nn.Module:
-        """Recursively discovers and fully_shards all submodules owning parameters dynamically."""
+        """
+        Recursively discovers and fully_shards all submodules owning parameters
+        dynamically.
+        """
+
         model = copy.deepcopy(self.base_model)
 
         for _, submodule in model.named_modules():

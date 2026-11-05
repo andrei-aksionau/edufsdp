@@ -101,7 +101,11 @@ class TestHooks(DistributedTestBase):
         assert isinstance(layer.weight, nn.Parameter)
 
     def test_forward_hooks_with_multiple_parameters(self) -> None:
-        """Verifies that forward hooks correctly manage multiple sharded parameters together."""
+        """
+        Verifies that forward hooks correctly manage multiple sharded parameters
+        together.
+        """
+
         # Setup multiple parameters (fc1 and fc2) managed by a single hook dictionary
         param1 = self.base_model.fc1.weight
         param2 = self.base_model.fc2.weight
@@ -190,7 +194,11 @@ class TestHooks(DistributedTestBase):
         assert sharded_parameter.shape == local_shape
 
     def test_backward_hooks_with_multiple_parameters(self) -> None:
-        """Verifies that backward hooks correctly manage multiple sharded parameters together."""
+        """
+        Verifies that backward hooks correctly manage multiple sharded parameters
+        together.
+        """
+
         # Setup multiple parameters (fc1 and fc2) managed by a single hook dictionary
         param1 = self.base_model.fc1.weight
         param2 = self.base_model.fc2.weight

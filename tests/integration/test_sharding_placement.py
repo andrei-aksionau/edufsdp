@@ -30,7 +30,10 @@ class SubBlock(nn.Module):
 
 
 class ComplexTestModel(nn.Module):
-    """Multi-block model with nested submodules for testing different FSDP wrapping strategies."""
+    """
+    Multi-block model with nested submodules for testing different FSDP wrapping
+    strategies.
+    """
 
     def __init__(self) -> None:
         super().__init__()
@@ -96,7 +99,11 @@ class TestShardingPlacement(DistributedTestBase):
 
     @pytest.mark.parametrize("strategy", ["layer", "block"])
     def test_static_resting_sharding(self, strategy: str) -> None:
-        """Verifies that all wrapped layer parameters rest in a sharded state matching rank placement."""
+        """
+        Verifies that all wrapped layer parameters rest in a sharded state matching rank
+        placement.
+        """
+
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
 
@@ -111,7 +118,11 @@ class TestShardingPlacement(DistributedTestBase):
 
     @pytest.mark.parametrize("strategy", ["layer", "block"])
     def test_forward_pre_hook_all_gather_shapes(self, strategy: str) -> None:
-        """Verifies that ForwardPreHook gathers all parameters to global shape prior to forward execution."""
+        """
+        Verifies that ForwardPreHook gathers all parameters to global shape prior to forward
+        execution.
+        """
+
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
 
@@ -149,7 +160,11 @@ class TestShardingPlacement(DistributedTestBase):
 
     @pytest.mark.parametrize("strategy", ["layer", "block"])
     def test_forward_post_hook_memory_cleanup_shapes(self, strategy: str) -> None:
-        """Verifies that ForwardPostHook frees gathered parameters back to local sharded shapes post execution."""
+        """
+        Verifies that ForwardPostHook frees gathered parameters back to local sharded shapes
+        post execution.
+        """
+
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
 
@@ -205,7 +220,11 @@ class TestShardingPlacement(DistributedTestBase):
 
     @pytest.mark.parametrize("strategy", ["layer", "block"])
     def test_backward_gradients_reduce_scattered(self, strategy: str) -> None:
-        """Verifies that gradients are computed, sharded, and match local parameter shapes post loss.backward()."""
+        """
+        Verifies that gradients are computed, sharded, and match local parameter shapes post
+        loss.backward().
+        """
+
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
 
@@ -232,7 +251,11 @@ class TestShardingPlacement(DistributedTestBase):
 
     @pytest.mark.parametrize("strategy", ["layer", "block"])
     def test_backward_post_hook_memory_cleanup_and_sharded_grads(self, strategy: str) -> None:
-        """Verifies that module weights return to sharded shapes post-backward and grad holds sharded gradients."""
+        """
+        Verifies that module weights return to sharded shapes post-backward and grad holds
+        sharded gradients.
+        """
+
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
 
@@ -251,11 +274,13 @@ class TestShardingPlacement(DistributedTestBase):
             )
 
             assert module_parameter.grad.to_local() is not None, (
-                f"Rank {self.rank}: {parameter_name}.grad was None on module parameter post-backward"
+                f"Rank {self.rank}: {parameter_name}.grad was None on module parameter "
+                "post-backward"
             )
             assert module_parameter.grad.to_local().shape == expected_local_shape, (
                 f"Rank {self.rank}: Post-backward {parameter_name}.grad shape was "
-                f"{module_parameter.grad.to_local().shape}, expected sharded shape {expected_local_shape}"
+                f"{module_parameter.grad.to_local().shape}, expected sharded shape "
+                f"{expected_local_shape}"
             )
 
     @pytest.mark.parametrize("strategy", ["block"])
@@ -283,7 +308,8 @@ class TestShardingPlacement(DistributedTestBase):
                 handle.remove()
 
             assert not any(gathered_states), (
-                f"Rank {self.rank}: {block_name} parameters were gathered during execution of the other block"
+                f"Rank {self.rank}: {block_name} parameters were gathered during execution "
+                "of the other block"
             )
 
         # Check that block2 remains sharded while block1 executes
