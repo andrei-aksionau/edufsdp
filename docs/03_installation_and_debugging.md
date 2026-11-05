@@ -38,10 +38,10 @@ uv sync
 To watch live weight sharding visualizations, hook executions, loss reduction, and state saving in action across multiple CPU worker processes, execute the root-level shell script:
 
 ```bash
-./run_inspect_fsdp.sh
+./run_demo.sh
 ```
 
-This script automates `torchrun` across 6 CPU processes using the Gloo backend to execute `inspect_fsdp.py`, running a live training iteration with step-by-step ASCII memory state logging and checkpoint verification.
+This script automates `torchrun` across 6 CPU processes using the Gloo backend to execute `demo.py`, running a live training iteration with step-by-step ASCII memory state logging and checkpoint verification.
 
 Here is an example output:
 
@@ -123,26 +123,42 @@ Wrapping models in `edufsdp` is designed to be as simple and familiar as PyTorch
 ```python
 import torch
 import torch.nn as nn
+from torch import distributed as dist
 from torch.distributed.device_mesh import init_device_mesh
-from edufsdp.fsdp import FSDP
+
+from edufsdp.fsdp import fully_shard
 
 # 1. Initialize a 1D CPU Device Mesh across available ranks
-device_mesh = init_device_mesh("cpu", mesh_shape=(2,), mesh_dim_names=("cpu",))
+dist.init_process_group(backend="gloo")
+device_mesh = init_device_mesh("cpu", mesh_shape=(2,))
+
 
 # 2. Define a standard PyTorch model
 class SimpleMLP(nn.Module):
-    def __init__(self, input_dim=128, hidden_dim=64, output_dim=10):
+    def __init__(
+        self,
+        input_dim: int = 128,
+        hidden_dim: int = 64,
+        output_dim: int = 10,
+    ):
         super().__init__()
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, output_dim)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         return self.fc2(torch.relu(self.fc1(x)))
 
-model = SimpleMLP()
+
+model = SimpleMLP().to(device_mesh.device_type)
 
 # 3. Wrap the model in FSDP (as simple as native PyTorch)
-wrapped_model = FSDP(model, device_mesh=device_mesh)
+# Wrap the whole model so all layers are all-gathered at once
+fully_shard(model, device_mesh=device_mesh)
+# Or do it more granularly, so only a layer under calculation is all-gathered
+fully_shard(model.fc1, device_mesh=device_mesh)
+fully_shard(model.fc2, device_mesh=device_mesh)
+fully_shard(model, device_mesh=device_mesh)
+
 ```
 
 ### Best Practices for Wrapping

@@ -64,7 +64,7 @@ uv sync
 Execute the root-level inspection script to watch live weight sharding visualizations, hook executions, and state saving in action:
 
 ```bash
-./run_inspect_fsdp.sh
+./run_demo.sh
 ```
 
 <br>

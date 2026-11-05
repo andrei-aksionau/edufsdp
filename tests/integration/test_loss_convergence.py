@@ -3,7 +3,6 @@ Integration tests verifying model training convergence,
 numerical stability, and parameter updates.
 """
 
-import copy
 from typing import Any
 
 import pytest
@@ -12,8 +11,7 @@ import torch.distributed as dist
 from torch import nn
 from torch.distributed.tensor import DTensor
 
-from edufsdp.fsdp import FSDP
-from tests.base.test_class import DistributedTestBase
+from tests.base.test_class import DistributedTestBase, FSDPType
 
 
 @pytest.mark.multi_rank
@@ -29,15 +27,9 @@ class TestCustomTrainingConvergence(DistributedTestBase):
             return
         super().setup_method(method)
 
-        self.wrapped_model = FSDP(copy.deepcopy(self.base_model), device_mesh=self.device_mesh)
+        self.wrapped_model = self.fully_shard_model(FSDPType.CUSTOM)
         self.optimizer = torch.optim.Adam(self.wrapped_model.parameters(), lr=0.1)
         self.criterion = nn.MSELoss()
-
-        torch.manual_seed(100 + self.rank)
-        self.x = torch.randn(
-            2, self.base_model.input_dim, device=self.device, requires_grad=True
-        )
-        self.target = torch.randn(2, self.base_model.output_dim, device=self.device)
 
     def test_loss_decreases_across_steps(self) -> None:
         """
@@ -48,8 +40,8 @@ class TestCustomTrainingConvergence(DistributedTestBase):
 
         for _ in range(5):
             self.optimizer.zero_grad()
-            output = self.wrapped_model(self.x)
-            loss = self.criterion(output, self.target)
+            output = self.wrapped_model(self.dummy_input)
+            loss = self.criterion(output, self.dummy_target)
             loss.backward()
             self.optimizer.step()
             losses.append(loss.item())
@@ -66,8 +58,8 @@ class TestCustomTrainingConvergence(DistributedTestBase):
         """Verifies that intermediate loss values do not become NaN or Inf during training."""
         for step in range(5):
             self.optimizer.zero_grad()
-            output = self.wrapped_model(self.x)
-            loss = self.criterion(output, self.target)
+            output = self.wrapped_model(self.dummy_input)
+            loss = self.criterion(output, self.dummy_target)
 
             assert not torch.isnan(loss).item(), (
                 f"[Rank {self.rank}] Loss became NaN at step {step}!"
@@ -86,8 +78,8 @@ class TestCustomTrainingConvergence(DistributedTestBase):
         }
 
         self.optimizer.zero_grad()
-        output = self.wrapped_model(self.x)
-        loss = self.criterion(output, self.target)
+        output = self.wrapped_model(self.dummy_input)
+        loss = self.criterion(output, self.dummy_target)
         loss.backward()
         self.optimizer.step()
 
@@ -115,25 +107,25 @@ class TestCustomTrainingConvergence(DistributedTestBase):
         """
         # 1. Run first backward pass and capture baseline gradients
         self.optimizer.zero_grad()
-        output1 = self.wrapped_model(self.x)
-        loss1 = self.criterion(output1, self.target)
-        loss1.backward()
+        output_1 = self.wrapped_model(self.dummy_input)
+        loss_1 = self.criterion(output_1, self.dummy_target)
+        loss_1.backward()
 
         single_pass_grads = {
             name: param.grad.to_local().clone()
-            for name, param in self.wrapped_model.inner_module.named_parameters()
+            for name, param in self.wrapped_model.named_parameters()
             if param.grad is not None and isinstance(param.grad, DTensor)
         }
 
         # 2. Run second backward pass without zeroing (accumulating gradients)
-        output2 = self.wrapped_model(self.x)
-        loss2 = self.criterion(output2, self.target)
-        loss2.backward()
+        output_2 = self.wrapped_model(self.dummy_input)
+        loss_2 = self.criterion(output_2, self.dummy_target)
+        loss_2.backward()
 
         # 3. Verify gradients accumulated properly and retained sharded shapes
         for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
             layer_name, attr = parameter_name.split(".")
-            parameter = getattr(getattr(self.wrapped_model.inner_module, layer_name), attr)
+            parameter = getattr(getattr(self.wrapped_model, layer_name), attr)
 
             assert parameter.grad is not None, (
                 f"Rank {self.rank}: {parameter_name}.grad is None after accumulation."
@@ -162,7 +154,7 @@ class TestCustomTrainingConvergence(DistributedTestBase):
         self.optimizer.zero_grad()
         for parameter_name in self.expected_shapes:
             layer_name, attr = parameter_name.split(".")
-            parameter = getattr(getattr(self.wrapped_model.inner_module, layer_name), attr)
+            parameter = getattr(getattr(self.wrapped_model, layer_name), attr)
 
             assert parameter.grad is None or torch.all(parameter.grad == 0), (
                 f"Rank {self.rank}: Gradients were not cleared after zero_grad() "

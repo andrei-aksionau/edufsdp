@@ -188,33 +188,34 @@ class ForwardPreHook:
     the wrapped `ShardedParameter` state to `is_gathered=True`.
     """
 
-    def __init__(self, sharded_parameter: ShardedParameter) -> None:
+    def __init__(self, sharded_parameters: dict[str, ShardedParameter]) -> None:
         """
-        Initializes the hook with its target sharded parameter.
+        Initializes the hook with its target sharded parameters.
 
         Args:
-            sharded_parameter: Target sharded parameter instance managed by this hook.
+            sharded_parameters: Dictionary of target sharded parameters managed by this hook.
 
         """
-        self.sharded_parameter = sharded_parameter
+        self.sharded_parameters = sharded_parameters
 
     def __call__(self, module: nn.Module, inputs: Any) -> None:
         """Executes parameter all-gather before forward pass execution."""
-        if self.sharded_parameter.is_gathered:
-            return
+        for sharded_parameter in self.sharded_parameters.values():
+            if sharded_parameter.is_gathered:
+                continue
 
-        # Run All-Gather with or without autograd graph tracking
-        if self.sharded_parameter.dtensor.requires_grad and torch.is_grad_enabled():
-            full_tensor = FSDPAllGatherFunction.apply(
-                self.sharded_parameter.local_shard, self.sharded_parameter
-            )
-        else:
-            with torch.no_grad():
+            # Run All-Gather with or without autograd graph tracking
+            if sharded_parameter.dtensor.requires_grad and torch.is_grad_enabled():
                 full_tensor = FSDPAllGatherFunction.apply(
-                    self.sharded_parameter.local_shard, self.sharded_parameter
+                    sharded_parameter.local_shard, sharded_parameter
                 )
+            else:
+                with torch.no_grad():
+                    full_tensor = FSDPAllGatherFunction.apply(
+                        sharded_parameter.local_shard, sharded_parameter
+                    )
 
-        self.sharded_parameter.set_unsharded(full_tensor)
+            sharded_parameter.set_unsharded(full_tensor)
 
 
 class ForwardPostHook:
@@ -226,28 +227,32 @@ class ForwardPostHook:
     peak memory consumption during the remainder of the forward pass.
     """
 
-    def __init__(self, sharded_parameter: ShardedParameter) -> None:
+    def __init__(self, sharded_parameters: dict[str, ShardedParameter]) -> None:
         """
-        Initializes the hook with its target sharded parameter.
+        Initializes the hook with its target sharded parameters.
 
         Args:
-            sharded_parameter: Target sharded parameter instance managed by this hook.
+            sharded_parameters: Dictionary of target sharded parameters managed by this hook.
 
         """
-        self.sharded_parameter = sharded_parameter
+        self.sharded_parameters = sharded_parameters
 
     def __call__(self, module: nn.Module, args: tuple[Any, ...], output: Any) -> None:
         """Frees gathered full parameters after forward pass execution."""
-        before_shape = self.sharded_parameter.shape
-        self.sharded_parameter.set_sharded()
-        after_shape = self.sharded_parameter.shape
+        for sharded_parameter in self.sharded_parameters.values():
+            if not sharded_parameter.is_gathered:
+                continue
 
-        logger.log_transition(
-            event_name="free",
-            parameter_name=self.sharded_parameter.fqn,
-            shape_before=before_shape,
-            shape_after=after_shape,
-        )
+            before_shape = sharded_parameter.shape
+            sharded_parameter.set_sharded()
+            after_shape = sharded_parameter.shape
+
+            logger.log_transition(
+                event_name="free",
+                parameter_name=sharded_parameter.fqn,
+                shape_before=before_shape,
+                shape_after=after_shape,
+            )
 
 
 class BackwardPreHook:
@@ -259,29 +264,30 @@ class BackwardPreHook:
     required for gradient matrix multiplications.
     """
 
-    def __init__(self, sharded_parameter: ShardedParameter) -> None:
+    def __init__(self, sharded_parameters: dict[str, ShardedParameter]) -> None:
         """
-        Initializes the hook with its target sharded parameter.
+        Initializes the hook with its target sharded parameters.
 
         Args:
-            sharded_parameter: Target sharded parameter instance managed by this hook.
+            sharded_parameters: Dictionary of target sharded parameters managed by this hook.
 
         """
-        self.sharded_parameter = sharded_parameter
+        self.sharded_parameters = sharded_parameters
 
     def __call__(self, module: nn.Module, grad_output: Any) -> None:
         """Executes parameter all-gather before layer backward pass execution."""
-        if self.sharded_parameter.is_gathered:
-            return
+        for sharded_parameter in self.sharded_parameters.values():
+            if sharded_parameter.is_gathered:
+                continue
 
-        # Prevent autograd from recording a duplicate AllGather graph node
-        # during backward execution, which would trigger graph mutation errors.
-        with torch.no_grad():
-            full_tensor = FSDPAllGatherFunction.apply(
-                self.sharded_parameter.local_shard, self.sharded_parameter
-            )
+            # Prevent autograd from recording a duplicate AllGather graph node
+            # during backward execution, which would trigger graph mutation errors.
+            with torch.no_grad():
+                full_tensor = FSDPAllGatherFunction.apply(
+                    sharded_parameter.local_shard, sharded_parameter
+                )
 
-        self.sharded_parameter.set_unsharded(full_tensor)
+            sharded_parameter.set_unsharded(full_tensor)
 
 
 class BackwardPostHook:
@@ -292,15 +298,15 @@ class BackwardPostHook:
     leaving only sharded 1/N local parameters and 1/N local gradient shards in device memory.
     """
 
-    def __init__(self, sharded_parameter: ShardedParameter) -> None:
+    def __init__(self, sharded_parameters: dict[str, ShardedParameter]) -> None:
         """
-        Initializes the hook with its target sharded parameter.
+        Initializes the hook with its target sharded parameters.
 
         Args:
-            sharded_parameter: Target sharded parameter instance managed by this hook.
+            sharded_parameters: Dictionary of target sharded parameters managed by this hook.
 
         """
-        self.sharded_parameter = sharded_parameter
+        self.sharded_parameters = sharded_parameters
 
     def __call__(
         self,
@@ -309,13 +315,17 @@ class BackwardPostHook:
         grad_output: Tensor | tuple[Tensor, ...],
     ) -> None:
         """Frees gathered full parameters after layer backward pass execution."""
-        before_shape = self.sharded_parameter.shape
-        self.sharded_parameter.set_sharded()
-        after_shape = self.sharded_parameter.shape
+        for sharded_parameter in self.sharded_parameters.values():
+            if not sharded_parameter.is_gathered:
+                continue
 
-        logger.log_transition(
-            event_name="free",
-            parameter_name=self.sharded_parameter.fqn,
-            shape_before=before_shape,
-            shape_after=after_shape,
-        )
+            before_shape = sharded_parameter.shape
+            sharded_parameter.set_sharded()
+            after_shape = sharded_parameter.shape
+
+            logger.log_transition(
+                event_name="free",
+                parameter_name=sharded_parameter.fqn,
+                shape_before=before_shape,
+                shape_after=after_shape,
+            )

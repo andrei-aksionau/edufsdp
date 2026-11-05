@@ -71,30 +71,87 @@ class TestHooks(DistributedTestBase):
             device_mesh=self.device_mesh,
         )
 
-        pre_hook = ForwardPreHook(sharded_parameter)
-        post_hook = ForwardPostHook(sharded_parameter)
+        pre_hook = ForwardPreHook({sharded_parameter.fqn: sharded_parameter})
+        post_hook = ForwardPostHook({sharded_parameter.fqn: sharded_parameter})
 
         # Initial state: sharded
         assert not sharded_parameter.is_gathered
         assert sharded_parameter.shape == local_shape
 
         # 1. Execute ForwardPreHook
-        pre_hook(layer, (torch.randn(2, 16),))
+        pre_hook(layer, (torch.randn(self.batch_size, self.base_model.input_dim),))
 
         assert sharded_parameter.is_gathered
         assert sharded_parameter.shape == global_shape
         assert isinstance(layer.weight, Tensor)
 
         # Re-triggering pre-hook when already gathered should be a no-op
-        pre_hook(layer, (torch.randn(2, 16),))
+        pre_hook(layer, (torch.randn(self.batch_size, self.base_model.input_dim),))
         assert sharded_parameter.is_gathered
 
         # 2. Execute ForwardPostHook
-        post_hook(layer, (torch.randn(2, 16),), torch.randn(2, 4))
+        post_hook(
+            self.base_model,
+            (torch.randn(self.batch_size, self.base_model.input_dim),),
+            torch.randn(self.batch_size, self.base_model.hidden_dim),
+        )
 
         assert not sharded_parameter.is_gathered
         assert sharded_parameter.shape == local_shape
         assert isinstance(layer.weight, nn.Parameter)
+
+    def test_forward_hooks_with_multiple_parameters(self) -> None:
+        """
+        Verifies that forward hooks correctly manage multiple sharded parameters
+        together.
+        """
+
+        # Setup multiple parameters (fc1 and fc2) managed by a single hook dictionary
+        param1 = self.base_model.fc1.weight
+        param2 = self.base_model.fc2.weight
+
+        sharded_param1 = ShardedParameter(
+            fqn="fc1.weight",
+            module=self.base_model.fc1,
+            parameter=nn.Parameter(param1),
+            device_mesh=self.device_mesh,
+        )
+        sharded_param2 = ShardedParameter(
+            fqn="fc2.weight",
+            module=self.base_model.fc2,
+            parameter=nn.Parameter(param2),
+            device_mesh=self.device_mesh,
+        )
+
+        sharded_params_dict = {
+            sharded_param1.fqn: sharded_param1,
+            sharded_param2.fqn: sharded_param2,
+        }
+
+        pre_hook = ForwardPreHook(sharded_params_dict)
+        post_hook = ForwardPostHook(sharded_params_dict)
+
+        # Initially both should be sharded (not gathered)
+        assert not sharded_param1.is_gathered
+        assert not sharded_param2.is_gathered
+
+        # Trigger pre-hook (simulating block entry)
+        pre_hook(self.base_model, (torch.randn(self.batch_size, self.base_model.input_dim),))
+
+        # Both parameters should now be all-gathered
+        assert sharded_param1.is_gathered
+        assert sharded_param2.is_gathered
+
+        # Trigger post-hook (simulating block exit)
+        post_hook(
+            self.base_model,
+            (torch.randn(self.batch_size, self.base_model.input_dim),),
+            torch.randn(self.batch_size, self.base_model.output_dim),
+        )
+
+        # Both parameters should now be re-sharded / freed
+        assert not sharded_param1.is_gathered
+        assert not sharded_param2.is_gathered
 
     def test_backward_pre_hook_and_backward_post_hook_lifecycle(self) -> None:
         """Verifies parameter re-gathering during backward pass and memory release after."""
@@ -109,25 +166,82 @@ class TestHooks(DistributedTestBase):
             device_mesh=self.device_mesh,
         )
 
-        backward_pre_hook = BackwardPreHook(sharded_parameter)
-        backward_post_hook = BackwardPostHook(sharded_parameter)
+        backward_pre_hook = BackwardPreHook({sharded_parameter.fqn: sharded_parameter})
+        backward_post_hook = BackwardPostHook({sharded_parameter.fqn: sharded_parameter})
 
         # Initial state: sharded
         assert not sharded_parameter.is_gathered
         assert sharded_parameter.shape == local_shape
 
         # 1. Execute BackwardPreHook
-        backward_pre_hook(layer, (torch.randn(2, 4),))
+        backward_pre_hook(layer, (torch.randn(self.batch_size, self.base_model.hidden_dim),))
 
         assert sharded_parameter.is_gathered
         assert sharded_parameter.shape == global_shape
 
         # Re-triggering backward pre-hook when already gathered should be a no-op
-        backward_pre_hook(layer, (torch.randn(2, 4),))
+        backward_pre_hook(layer, (torch.randn(self.batch_size, self.base_model.hidden_dim),))
         assert sharded_parameter.is_gathered
 
         # 2. Execute BackwardPostHook
-        backward_post_hook(layer, (torch.randn(2, 16),), (torch.randn(2, 4),))
+        backward_post_hook(
+            layer,
+            (torch.randn(self.batch_size, self.base_model.input_dim),),
+            (torch.randn(self.batch_size, self.base_model.hidden_dim),),
+        )
 
         assert not sharded_parameter.is_gathered
         assert sharded_parameter.shape == local_shape
+
+    def test_backward_hooks_with_multiple_parameters(self) -> None:
+        """
+        Verifies that backward hooks correctly manage multiple sharded parameters
+        together.
+        """
+
+        # Setup multiple parameters (fc1 and fc2) managed by a single hook dictionary
+        param1 = self.base_model.fc1.weight
+        param2 = self.base_model.fc2.weight
+
+        sharded_param1 = ShardedParameter(
+            fqn="fc1.weight",
+            module=self.base_model.fc1,
+            parameter=nn.Parameter(param1),
+            device_mesh=self.device_mesh,
+        )
+        sharded_param2 = ShardedParameter(
+            fqn="fc2.weight",
+            module=self.base_model.fc2,
+            parameter=nn.Parameter(param2),
+            device_mesh=self.device_mesh,
+        )
+
+        sharded_params_dict = {
+            sharded_param1.fqn: sharded_param1,
+            sharded_param2.fqn: sharded_param2,
+        }
+
+        backward_pre_hook = BackwardPreHook(sharded_params_dict)
+        backward_post_hook = BackwardPostHook(sharded_params_dict)
+
+        # Initially both should be sharded (not gathered)
+        assert not sharded_param1.is_gathered
+        assert not sharded_param2.is_gathered
+
+        # Trigger backward pre-hook (simulating block entry)
+        backward_pre_hook(self.base_model, (torch.randn(2, self.base_model.output_dim),))
+
+        # Both parameters should now be all-gathered
+        assert sharded_param1.is_gathered
+        assert sharded_param2.is_gathered
+
+        # Trigger backward post-hook (simulating block exit)
+        backward_post_hook(
+            self.base_model,
+            (torch.randn(2, self.base_model.input_dim),),
+            (torch.randn(2, self.base_model.output_dim),),
+        )
+
+        # Both parameters should now be re-sharded / freed
+        assert not sharded_param1.is_gathered
+        assert not sharded_param2.is_gathered

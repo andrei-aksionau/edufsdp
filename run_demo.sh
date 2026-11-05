@@ -5,7 +5,7 @@ set -euo pipefail
 # FSDP Inspection Launcher
 #
 # Usage:
-#   ./run_inspect_fsdp.sh [--nprocs <num>]
+#   ./run_demo.sh [--nprocs <num>]
 #
 # Notes:
 #   - To disable boolean flags below, add a `no-` prefix
@@ -37,7 +37,7 @@ torchrun \
   --nproc-per-node="$NPROCS" \
   --master-addr=127.0.0.1 \
   --master-port=29500 \
-  inspect_fsdp.py \
+  demo.py \
   --num-iterations 1 \
   --memory-first-iter-only \
   --show-memory-training \

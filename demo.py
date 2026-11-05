@@ -21,10 +21,10 @@ import torch.nn as nn
 from torch import Tensor
 from torch.distributed.device_mesh import DeviceMesh, init_device_mesh
 
-from edufsdp.fsdp import FSDP
+from edufsdp.fsdp import fully_shard
 from edufsdp.logging import logger
 from edufsdp.model import MLP
-from edufsdp.state_dict import StateDictType
+from edufsdp.state_dict import StateDictManager, StateDictType
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -154,7 +154,7 @@ def run_train_step(
     optimizer.step()
 
 
-def check_sd_loading(fsdp_model: FSDP, device_mesh: DeviceMesh) -> None:
+def check_sd_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) -> None:
     """
     Validates state dict extraction and restoration across Local and Full formats.
 
@@ -166,14 +166,16 @@ def check_sd_loading(fsdp_model: FSDP, device_mesh: DeviceMesh) -> None:
     logger.log_section_header("State Dict Checkpoint Verification")
 
     for sd_type in StateDictType:
-        sd = fsdp_model.state_dict(state_dict_type=sd_type)
+        sd = StateDictManager.get_state_dict(fsdp_model, state_dict_type=sd_type)
         logger.log_header(f"{sd_type.name.capitalize()} State Dict")
         for name, tensor in sd.items():
             logger.log_rank0(f"  {name:<25} │ {tuple(tensor.shape)}")
         logger.log_rank0("\n")
 
-        fresh_fsdp_model = FSDP(MLP(), device_mesh=device_mesh)
-        fresh_fsdp_model.load_state_dict(sd, state_dict_type=sd_type)
+        fresh_fsdp_model = MLP()
+        fully_shard(fresh_fsdp_model.layer1, device_mesh)
+        fully_shard(fresh_fsdp_model.layer2, device_mesh)
+        StateDictManager.load_state_dict(fsdp_model, sd, state_dict_type=sd_type)
         logger.log_ordered(
             f"✓ Successfully loaded {sd_type.name.capitalize()} State Dict "
             "into fresh model instance"
@@ -235,18 +237,19 @@ def main() -> None:
     logger.log_header(f"NUMBER OF RANKS: {world_size}")
 
     # 1. Initialize sharded model, optimizer, and loss criterion
-    fsdp_model = FSDP(MLP(), device_mesh=mesh)
-    optimizer = torch.optim.Adam(fsdp_model.parameters(), lr=0.1)
+    model = MLP()
+    fully_shard(model.layer1, mesh)
+    fully_shard(model.layer2, mesh)
+    fully_shard(model, mesh)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
     criterion = nn.MSELoss()
 
     # 2. Prepare a distinct shard of the total batch for each rank (Data Parallelism)
     batch_per_rank = 2
     global_inputs = torch.randn(
-        world_size * batch_per_rank, fsdp_model.inner_module.input_dim, requires_grad=True
+        world_size * batch_per_rank, model.input_dim, requires_grad=True
     )
-    global_targets = torch.randn(
-        world_size * batch_per_rank, fsdp_model.inner_module.output_dim
-    )
+    global_targets = torch.randn(world_size * batch_per_rank, model.output_dim)
 
     # 3. Slice rank-local input batch
     start_idx = rank * batch_per_rank
@@ -262,11 +265,11 @@ def main() -> None:
         )
 
         with log_hooks_enabled(enabled=should_log):
-            run_train_step(fsdp_model, optimizer, criterion, local_inputs, local_targets)
+            run_train_step(model, optimizer, criterion, local_inputs, local_targets)
 
     # 5. Check state dict saving/loading with configurable hook visualization
     with log_hooks_enabled(args.show_memory_checkpoint):
-        check_sd_loading(fsdp_model, mesh)
+        check_sd_loading(model, mesh)
 
     dist.destroy_process_group()
 

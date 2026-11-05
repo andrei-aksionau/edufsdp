@@ -38,149 +38,82 @@ Execution lifecycle for each submodule:
                                                  └──────────────────────────────────────┘
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
 
-import torch.nn as nn
-from torch import Tensor
-
-from edufsdp.hooks import (
-    BackwardPostHook,
-    BackwardPreHook,
-    ForwardPostHook,
-    ForwardPreHook,
-)
+from edufsdp.hooks import BackwardPostHook, BackwardPreHook, ForwardPostHook, ForwardPreHook
 from edufsdp.sharded_parameter import ShardedParameter
-from edufsdp.state_dict import StateDictManager, StateDictType
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
+    import torch.nn as nn
     from torch.distributed.device_mesh import DeviceMesh
 
 
-class FSDP[ModuleT: nn.Module](nn.Module):
+def fully_shard(module: nn.Module, device_mesh: DeviceMesh) -> nn.Module:
     """
-    Fully Sharded Data Parallel wrapper over a PyTorch `nn.Module`.
+    Shards a PyTorch module and its entire un-sharded subtree as a single FSDP unit.
 
-    Shards module parameters across a process group `DeviceMesh` using a
-    centralized registry and manages collective operations (`all_gather`,
-    `reduce_scatter`) via autograd hooks.
+    Recursively collects all parameters within the module's subtree into a single dictionary,
+    registers execution hooks exclusively on the target module, and respects pre-sharded
+    child boundaries.
 
-    Attributes:
-        inner_module (ModuleT): Wrapped target module instance.
-        device_mesh (DeviceMesh): PyTorch DeviceMesh defining process rank topology.
-        sharded_parameters (dict[str, ShardedParameter]): Centralized registry
-            mapping parameter FQNs to their corresponding passive wrappers.
+    Args:
+        module: Target PyTorch module (e.g., a TransformerBlock or the whole model) to shard.
+        device_mesh: PyTorch DeviceMesh defining process rank layout for sharding.
+
+    Returns:
+        The sharded module instance (passed in).
 
     """
 
-    def __init__(self, module: ModuleT, device_mesh: DeviceMesh) -> None:
-        """
-        Initializes FSDP wrapper and shards child parameters.
+    if hasattr(module, "_sharded_parameters"):
+        return module
 
-        Args:
-            module: Target PyTorch module to shard and wrap.
-            device_mesh: PyTorch DeviceMesh defining process rank layout.
+    sharded_parameters: dict[str, ShardedParameter] = {}
 
-        """
-        super().__init__()
-        self.inner_module: ModuleT = module
-        self.device_mesh = device_mesh
+    def _collect_subtree(submodule: nn.Module, prefix: str = "") -> None:
+        """Recursively collects parameters across the subtree into the root dictionary."""
+        # If this child is already an independent sharded unit, # do not absorb its parameters.
+        # Instead, patch its FQNs with the new prefix.
+        if submodule is not module and hasattr(submodule, "_sharded_parameters"):
+            existing_params = cast(
+                "dict[str, ShardedParameter]",
+                submodule._sharded_parameters,
+            )
+            updated_params: dict[str, ShardedParameter] = {}
+            for old_key, sharded_param in existing_params.items():
+                absolute_fqn = f"{prefix}.{old_key}" if prefix else old_key
+                sharded_param.fqn = absolute_fqn  # Property setter updates name & fqn
+                updated_params[absolute_fqn] = sharded_param
+            object.__setattr__(submodule, "_sharded_parameters", updated_params)
+            return
 
-        self.sharded_parameters: dict[str, ShardedParameter] = {}
-        # Single-pass transformation: shards parameters & registers hooks in one go
-        self._wrap_module_tree(self.inner_module)
-
-    def _wrap_module_tree(self, module: nn.Module, prefix: str = "") -> None:
-        """
-        Traverses the module tree recursively.
-
-        For each submodule:
-          1. Recursively traverses child modules (bottom-up traversal).
-          2. Shards direct parameters into `ShardedParameter` wrappers.
-          3. Attaches forward and backward execution hooks directly to the submodule.
-
-        Args:
-            module: Current module instance in the traversal.
-            prefix: Accumulated dot-separated FQN path (e.g., 'layer1.').
-
-        """
-        # 1. Post-order recursion: process child submodules first
-        for child_name, child_module in module.named_children():
-            child_prefix = f"{prefix}{child_name}." if prefix else f"{child_name}."
-            self._wrap_module_tree(child_module, prefix=child_prefix)
-
-        # 2. Process parameters owned directly by this module instance
-        for parameter_name, parameter in list(module.named_parameters(recurse=False)):
-            fqn = f"{prefix}{parameter_name}" if prefix else parameter_name
-
+        # Collect parameters owned directly by this submodule
+        for param_name, parameter in submodule.named_parameters(recurse=False):
+            fqn = f"{prefix}.{param_name}" if prefix else param_name
             sharded_parameter = ShardedParameter(
                 fqn=fqn,
-                module=module,
+                module=submodule,
                 parameter=parameter,
-                device_mesh=self.device_mesh,
+                device_mesh=device_mesh,
             )
-            self.sharded_parameters[fqn] = sharded_parameter
+            sharded_parameters[fqn] = sharded_parameter
 
-            # 3. Attach forward & backward hooks to trigger all_gather and free
-            module.register_forward_pre_hook(ForwardPreHook(sharded_parameter))
-            module.register_forward_hook(ForwardPostHook(sharded_parameter))
-            module.register_full_backward_pre_hook(BackwardPreHook(sharded_parameter))
-            module.register_full_backward_hook(BackwardPostHook(sharded_parameter))
+        # Recurse into child submodules
+        for child_name, child_module in submodule.named_children():
+            child_prefix = f"{prefix}.{child_name}" if prefix else child_name
+            _collect_subtree(child_module, prefix=child_prefix)
 
-    def forward(self, *args: Any, **kwargs: Any) -> Any:
-        """
-        Delegates forward pass execution to the inner wrapped module.
+    # Execute subtree parameter collection starting from the target module
+    _collect_subtree(module)
 
-        Args:
-            *args: Positional inputs passed to the inner module.
-            **kwargs: Keyword inputs passed to the inner module.
+    # Register hooks ONCE at the target module level for the entire collected block
+    if sharded_parameters:
+        module.register_forward_pre_hook(ForwardPreHook(sharded_parameters))
+        module.register_forward_hook(ForwardPostHook(sharded_parameters))
+        module.register_full_backward_pre_hook(BackwardPreHook(sharded_parameters))
+        module.register_full_backward_hook(BackwardPostHook(sharded_parameters))
 
-        Returns:
-            Output computation graph produced by the inner module forward pass.
+        # Store reference to sharded parameters on the module for inspection and checkpointing
+        object.__setattr__(module, "_sharded_parameters", sharded_parameters)
 
-        """
-        return self.inner_module(*args, **kwargs)
-
-    def state_dict(
-        self,
-        *args: Any,
-        state_dict_type: StateDictType = StateDictType.Local,
-        **kwargs: Any,
-    ) -> dict[str, Tensor]:
-        """
-        Exports module state dict in either `Local` (sharded) or `Full` (unsharded) format.
-
-        Args:
-            *args: Positional arguments matching `nn.Module.state_dict`.
-            state_dict_type: Target format (`StateDictType.Local` or `StateDictType.Full`).
-            **kwargs: Keyword arguments matching `nn.Module.state_dict` (prefix, keep_vars).
-
-        Returns:
-            Map of parameter FQNs to tensor shards or gathered full tensors.
-
-        """
-        return StateDictManager.get_state_dict(
-            self.inner_module, self.sharded_parameters, state_dict_type
-        )
-
-    def load_state_dict(
-        self,
-        state_dict: Mapping[str, Tensor],
-        strict: bool = True,
-        assign: bool = False,
-        state_dict_type: StateDictType = StateDictType.Local,
-    ) -> None:
-        """
-        Loads state dictionary checkpoint into sharded parameters.
-
-        Args:
-            state_dict: Checkpoint mapping parameter names to tensors.
-            strict: Whether to strictly enforce key matching in state_dict.
-            assign: Whether to assign tensors directly rather than copying in-place.
-            state_dict_type: Format of incoming state_dict (`Local` or `Full`).
-
-        """
-        return StateDictManager.load_state_dict(
-            self.inner_module, self.sharded_parameters, state_dict, state_dict_type
-        )
+    return module
