@@ -120,7 +120,7 @@ Wrapping models in `edufsdp` is designed to be as simple and familiar as PyTorch
 
 ### Basic Wrapping Example
 
-```python
+```python verify_via_test
 import torch
 import torch.nn as nn
 from torch import distributed as dist
@@ -129,7 +129,8 @@ from torch.distributed.device_mesh import init_device_mesh
 from edufsdp.fsdp import fully_shard
 
 # 1. Initialize a 1D CPU Device Mesh across available ranks
-dist.init_process_group(backend="gloo")
+if not dist.is_initialized():
+    dist.init_process_group(backend="gloo")
 device_mesh = init_device_mesh("cpu", mesh_shape=(2,))
 
 
