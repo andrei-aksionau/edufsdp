@@ -26,19 +26,10 @@ def get_free_port() -> str:
         return str(s.getsockname()[1])
 
 
-def _spawn_worker(
-    rank: int,
-    world_size: int,
-    port: str,
-    test_func: Callable[..., Any],
-    test_instance: Any,
-    kwargs: dict[str, Any],
-) -> None:
+def _init_distributed_environment(rank: int, world_size: int, port: str) -> None:
     """
-    Target function executed inside each spawned worker process.
-
-    Populates standard PyTorch distributed environment variables, sets up loopback
-    network interfaces for Gloo, and executes the target test function or method.
+    Configures standard PyTorch distributed environment variables and initializes
+    the Gloo process group with loopback interface bindings.
     """
     # Configure PyTorch Distributed environment variables
     os.environ["MASTER_ADDR"] = "127.0.0.1"
@@ -66,6 +57,24 @@ def _spawn_worker(
         world_size=world_size,
         timeout=timedelta(seconds=timeout_seconds),
     )
+
+
+def _spawn_worker(
+    rank: int,
+    world_size: int,
+    port: str,
+    test_func: Callable[..., Any],
+    test_instance: Any,
+    kwargs: dict[str, Any],
+) -> None:
+    """
+    Target function executed inside each spawned worker process.
+
+    Populates standard PyTorch distributed environment variables, sets up loopback
+    network interfaces for Gloo, and executes the target test function or method.
+    """
+
+    _init_distributed_environment(rank, world_size, port)
 
     # Execute class methods with bound `self` instance, or plain functions directly
     if test_instance is not None:
