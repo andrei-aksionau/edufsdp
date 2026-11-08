@@ -72,7 +72,7 @@ def fully_shard(module: nn.Module, device_mesh: DeviceMesh) -> nn.Module:
 
     def _collect_subtree(submodule: nn.Module, prefix: str = "") -> None:
         """Recursively collects parameters across the subtree into the root dictionary."""
-        # If this child is already an independent sharded unit, # do not absorb its parameters.
+        # If this child is already an independent sharded unit, do not absorb its parameters.
         # Instead, patch its FQNs with the new prefix.
         if submodule is not module and hasattr(submodule, "_sharded_parameters"):
             existing_params = cast(

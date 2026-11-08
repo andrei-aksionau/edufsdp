@@ -41,5 +41,5 @@ torchrun \
   --num-iterations 1 \
   --memory-first-iter-only \
   --show-memory-training \
-  --show-memory-checkpoint \
+  --no-show-memory-checkpoint \
   2>&1 | grep --line-buffered -v "Redirects are currently not supported in MacOs"

@@ -77,7 +77,11 @@ class TestRankLoggerUnit:
         self, rank: int, world_size: int, provided: str, expected: str
     ) -> None:
         """Verifies rank prefix formatting matches expectations."""
-        with patch.dict(os.environ, {"RANK": str(rank), "WORLD_SIZE": str(world_size)}):
+        with (
+            patch("edufsdp.logging.dist.is_initialized", return_value=True),
+            patch("edufsdp.logging.dist.get_rank", return_value=rank),
+            patch("edufsdp.logging.dist.get_world_size", return_value=world_size),
+        ):
             rank_logger = RankLogger()
             assert rank_logger.add_prefix_rank(provided) == expected
 
@@ -90,7 +94,12 @@ class TestRankLoggerUnit:
         Verifies log_transition runs successfully across multiple rank settings without
         raising errors.
         """
-        with patch.dict(os.environ, {"RANK": str(rank), "WORLD_SIZE": str(world_size)}):
+        with (
+            patch("edufsdp.logging.dist.is_initialized", return_value=True),
+            patch("edufsdp.logging.dist.get_rank", return_value=rank),
+            patch("edufsdp.logging.dist.get_world_size", return_value=world_size),
+            patch("edufsdp.logging.dist.barrier"),
+        ):
             rank_logger = RankLogger()
             rank_logger.log_hooks = True
 

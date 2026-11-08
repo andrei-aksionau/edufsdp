@@ -20,6 +20,7 @@ import torch.distributed as dist
 import torch.nn as nn
 from torch import Tensor
 from torch.distributed.device_mesh import DeviceMesh, init_device_mesh
+from torch.distributed.tensor import DTensor
 
 from edufsdp.fsdp import fully_shard
 from edufsdp.logging import logger
@@ -166,16 +167,34 @@ def check_sd_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) -> None:
     logger.log_section_header("State Dict Checkpoint Verification")
 
     for sd_type in StateDictType:
+        # Retrieve state dict from the provide model
         sd = StateDictManager.get_state_dict(fsdp_model, state_dict_type=sd_type)
         logger.log_header(f"{sd_type.name.capitalize()} State Dict")
         for name, tensor in sd.items():
-            logger.log_rank0(f"  {name:<25} │ {tuple(tensor.shape)}")
+            shape = tuple(
+                tensor.to_local().shape if isinstance(tensor, DTensor) else tensor.shape
+            )
+            logger.log_rank0(f"  {name:<25} │ {shape}")
         logger.log_rank0("\n")
 
+        # Create a new model with random weight, load state_dict into it
         fresh_fsdp_model = MLP()
         fully_shard(fresh_fsdp_model.layer1, device_mesh)
         fully_shard(fresh_fsdp_model.layer2, device_mesh)
-        StateDictManager.load_state_dict(fsdp_model, sd, state_dict_type=sd_type)
+        fully_shard(fresh_fsdp_model, device_mesh)
+        StateDictManager.load_state_dict(fresh_fsdp_model, sd, state_dict_type=sd_type)
+
+        # Verify that state dictionaries do match
+        fresh_sd = StateDictManager.get_state_dict(fresh_fsdp_model, state_dict_type=sd_type)
+
+        for key in sd:
+            val_a = sd[key]
+            val_b = fresh_sd[key]
+
+            a = val_a.to_local() if isinstance(val_a, DTensor) else val_a
+            b = val_b.to_local() if isinstance(val_b, DTensor) else val_b
+            torch.testing.assert_close(a, b)
+
         logger.log_ordered(
             f"✓ Successfully loaded {sd_type.name.capitalize()} State Dict "
             "into fresh model instance"

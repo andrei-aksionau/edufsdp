@@ -6,8 +6,6 @@ Provides:
 2. `RankLogger`: Handles distributed rank logging, barriers, and state transitions.
 """
 
-import os
-
 import torch
 import torch.distributed as dist
 
@@ -57,10 +55,10 @@ class ASCIIVisualizer:
         """
         Renders a single fixed-width ASCII bar representing memory layout for a rank.
 
-        Examples (world_size=2, bar_width=16):
-        - Gathered full tensor: [████████████████]
-        - Rank 0 local shard:   [████████░░░░░░░░]
-        - Rank 1 local shard:   [░░░░░░░░████████]
+        Examples (world_size=2, bar_width=18):
+        - Gathered full tensor: [██████████████████]
+        - Rank 0 local shard:   [█████████░░░░░░░░░]
+        - Rank 1 local shard:   [░░░░░░░░░█████████]
 
         Args:
             is_gathered: Whether the target tensor is currently full or sharded.
@@ -107,13 +105,29 @@ class RankLogger:
     EVENT_COLUMN_WIDTH = 15
 
     def __init__(self) -> None:
-        """Initializes distributed rank logger with ASCII visualizer."""
-        self.rank = int(os.environ.get("RANK", 0))
-        self.world_size = int(os.environ.get("WORLD_SIZE", 1))
+        """
+        Initializes the logger without touching `torch.distributed`.
+
+        Rank, world size and the visualizer are resolved lazily, because this object is
+        created at import time, before the process group exists.
+        """
         self.last_layer_prefix: str | None = None
         self.log_hooks = False
 
-        self.visualizer = ASCIIVisualizer(rank=self.rank, world_size=self.world_size)
+    @property
+    def rank(self) -> int:
+        """Rank of this process, or 0 if the process group is not initialized."""
+        return dist.get_rank() if dist.is_initialized() else 0
+
+    @property
+    def world_size(self) -> int:
+        """Number of processes, or 1 if the process group is not initialized."""
+        return dist.get_world_size() if dist.is_initialized() else 1
+
+    @property
+    def visualizer(self) -> ASCIIVisualizer:
+        """ASCII visualizer matching the current rank and world size."""
+        return ASCIIVisualizer(rank=self.rank, world_size=self.world_size)
 
     def add_prefix_rank(self, message: str) -> str:
         """

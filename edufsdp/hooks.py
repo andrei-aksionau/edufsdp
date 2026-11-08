@@ -72,7 +72,7 @@ class FSDPAllGatherFunction(torch.autograd.Function):
     """
     Symmetric autograd function.
 
-    Pars forward parameter All-Gather with backward gradient Reduce-Scatter.
+    Pairs forward parameter All-Gather with backward gradient Reduce-Scatter.
     """
 
     @staticmethod
