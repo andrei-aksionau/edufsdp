@@ -2,7 +2,7 @@
 
 <br>
 
-The `edufsdp` codebase is structured to maintain a direct, transparent correspondence between theoretical distributed principles and actual implementation details. Rather than relying on complex production wrappers or heavy C++ extensions, the architecture uses standard Python and PyTorch primitives to expose the mechanics of parameter sharding, lifecycle hooks, and state management.
+The *edufsdp* codebase is structured to maintain a direct, transparent correspondence between theoretical distributed principles and actual implementation details. Rather than relying on complex production wrappers or heavy C++ extensions, the architecture uses standard Python and PyTorch primitives to expose the mechanics of parameter sharding, lifecycle hooks, and state management.
 
 The core logic is partitioned into four primary modules:
 

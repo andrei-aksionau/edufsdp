@@ -154,11 +154,11 @@ Rank 0 Local Memory:
 
 ## 5. Architectural Comparison: FSDP1 vs. FSDP2
 
-PyTorch has evolved through two distinct paradigms for implementing Fully Sharded Data Parallelism. Understanding this architectural evolution clarifies why `edufsdp` adopts modern distributed principles rather than legacy abstractions.
+PyTorch has evolved through two distinct paradigms for implementing Fully Sharded Data Parallelism. Understanding this architectural evolution clarifies why *edufsdp* adopts modern distributed principles rather than legacy abstractions.
 
 The first-generation approach, FSDP1, relies on a flat-parameter paradigm where all parameters within a module or nested block are concatenated and flattened into a single, massive 1D continuous tensor known as the `FlatParameter`. While effective for scaling large models, this flattening approach introduces significant trade-offs: it destroys individual parameter identities and names within the module hierarchy, complicating inspection, debugging, and integration with custom layers. Furthermore, state dictionary management requires complex remapping and un-flattening logic, and interoperability with other parallelism techniques like Tensor Parallelism becomes cumbersome because underlying weights are obscured inside opaque flat buffers.
 
-To overcome these hurdles, PyTorch introduced FSDP2 - the modern standard built natively around distributed tensor abstractions (`DTensor`) and the `fully_shard` API. Instead of flattening tensors, FSDP2 preserves individual parameter boundaries and shapes by wrapping and sharding each `nn.Parameter` directly along dimension 0 using a `DeviceMesh` and native `Shard(0)` placements. This zero-flattening design ensures that original shapes and metadata remain intact, enabling clean autograd composition with Tensor and Pipeline Parallelism. This transparent, per-parameter sharding philosophy forms the exact foundation of `edufsdp`.
+To overcome these hurdles, PyTorch introduced FSDP2 - the modern standard built natively around distributed tensor abstractions (`DTensor`) and the `fully_shard` API. Instead of flattening tensors, FSDP2 preserves individual parameter boundaries and shapes by wrapping and sharding each 'nn.Parameter' directly along dimension 0 using a 'DeviceMesh' and native 'Shard(0)' placements. This zero-flattening design ensures that original shapes and metadata remain intact, enabling clean autograd composition with Tensor and Pipeline Parallelism. This transparent, per-parameter sharding philosophy forms the exact foundation of *edufsdp*.
 
 | Feature | FSDP1 (Flat Parameter Paradigm) | FSDP2 (Per-Parameter DTensor Paradigm) |
 | --- | --- | --- |

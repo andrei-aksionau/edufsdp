@@ -8,7 +8,7 @@ This document provides a practical guide for setting up the edufsdp development 
 
 ## 1. Environment Setup & Installation
 
-`edufsdp` relies on modern Python tooling and requires **Python 3.14** and **PyTorch 2.14** to guarantee strict version parity.
+*edufsdp* relies on modern Python tooling and requires **Python 3.14** and **PyTorch 2.14** to guarantee strict version parity.
 
 ### Prerequisites
 
@@ -41,7 +41,7 @@ To watch live weight sharding visualizations, hook executions, loss reduction, a
 ./run_demo.sh
 ```
 
-This script automates `torchrun` across 6 CPU processes using the Gloo backend to execute `demo.py`, running a live training iteration with step-by-step ASCII memory state logging and checkpoint verification.
+This script automates 'torchrun' across 6 CPU processes using the Gloo backend to execute `demo.py`, running a live training iteration with step-by-step ASCII memory state logging and checkpoint verification.
 
 Here is an example output:
 
@@ -90,7 +90,7 @@ Rank 2 │ layer1.bias          │ free            │ Shard: [█████�
 
 The repository includes a comprehensive automated test suite combining **unit tests** (isolating individual components like parameter wrapper, hooks, logging, and state dict managers) and **integration tests** (validating end-to-end distributed lifecycles, DTensor placements, optimizer state sharding, and loss convergence).
 
-Thanks to a custom pytest hook in `conftest.py`, tests marked with `@pytest.mark.multi_rank` automatically spawn isolated CPU worker processes via `torch.multiprocessing.spawn`. In other words, you can execute the entire test suite using standard pytest invocations:
+Thanks to a custom pytest hook in `conftest.py`, tests marked with `@pytest.mark.multi_rank` automatically spawn isolated CPU worker processes via 'torch.multiprocessing.spawn'. In other words, you can execute the entire test suite using standard pytest invocations:
 
 ```bash
 pytest
@@ -98,11 +98,11 @@ pytest
 
 ### Key Verification Focus
 
-The verification suite (`test_torch_parity.py`) asserts that `edufsdp` matches PyTorch's native distributed primitives down to tight mathematical tolerances ($\le 10^{-5}$):
+The verification suite (`test_torch_parity.py`) asserts that *edufsdp* matches PyTorch's native distributed primitives down to tight mathematical tolerances ($\le 10^{-5}$):
 
 * **Sharding Placements:** Validates tensor sharding layouts for weights and optimizer states against native implementations.
 * **Gradient Reduction Match:** Verifies that Reduce-Scatter collective math produces identical gradients.
-* **Parameter Updates & Loss Convergence:** Asserts that iterative training steps yield identical loss curves and weight updates compared to PyTorch's native `fully_shard`.
+* **Parameter Updates & Loss Convergence:** Asserts that iterative training steps yield identical loss curves and weight updates compared to PyTorch's native 'fully_shard'.
 * **State Dict Restoration:** Verifies Local and Full checkpoint export/import fidelity.
 
 <br>
@@ -116,7 +116,7 @@ It provides out-of-the-box configurations for launching single files as well as 
 
 ## 4. Wrapping Custom Modules
 
-Wrapping models in `edufsdp` is designed to be as simple and familiar as PyTorch's native FSDP interface.
+Wrapping models in *edufsdp* is designed to be as simple and familiar as PyTorch's native FSDP interface.
 
 ### Basic Wrapping Example
 
@@ -164,8 +164,8 @@ fully_shard(model, device_mesh=device_mesh)
 
 ### Best Practices for Wrapping
 
-* **Leaf vs. Container Modules:** `edufsdp` inspects parameters recursively. Ensure your parameters reside in standard leaf layers (like `nn.Linear` or `nn.Conv2d`) so that hooks bind correctly to parameter ownership boundaries.
-* **In-Place Operations:** Avoid in-place tensor mutations (e.g., `x.add_()`) inside custom forward passes, as they can interfere with autograd gradient graphs and tensor sharding hooks.
+* **Leaf vs. Container Modules:** *edufsdp* inspects parameters recursively. Ensure your parameters reside in standard leaf layers (like 'nn.Linear' or 'nn.Conv2d') so that hooks bind correctly to parameter ownership boundaries.
+* **In-Place Operations:** Avoid in-place tensor mutations (e.g., 'x.add_()') inside custom forward passes, as they can interfere with autograd gradient graphs and tensor sharding hooks.
 
 <br>
 
@@ -181,7 +181,7 @@ Running distributed training across multiple CPU processes via the Gloo backend 
 
 ### 2. Interface Binding Issues on Linux/macOS
 
-* **Symptom:** `RuntimeError: Gloo initialization failed` or socket timeout errors on startup.
+* **Symptom:** '*RuntimeError: Gloo initialization failed*' or socket timeout errors on startup.
 * **Cause:** PyTorch defaults to guessing the network interface, which can fail on machines with multiple active loopback or virtual network interfaces.
 * **Solution:** Explicitly set the network interface environment variable before launching your script:
 
@@ -189,8 +189,8 @@ Running distributed training across multiple CPU processes via the Gloo backend 
 export GLOO_SOCKET_IFNAME=lo0  # Or lo on Linux
 ```
 
-### 3. Missing Gradients (`NoneType`)
+### 3. Missing Gradients (NoneType)
 
-* **Symptom:** `AttributeError: 'NoneType' object has no attribute 'to_local'` during the optimizer step.
-* **Cause:** The backward pass was executed on a tensor that did not require gradients, or `backward()` was not called on the loss output.
-* **Solution:** Ensure `requires_grad=True` is set on input tensors and that `loss.backward()` is called before invoking `optimizer.step()`.
+* **Symptom:** '*AttributeError: NoneType object has no attribute to_local'* during the optimizer step.
+* **Cause:** The backward pass was executed on a tensor that did not require gradients, or 'backward()' was not called on the loss output.
+* **Solution:** Ensure **requires_grad=True** is set on input tensors and that **loss.backward()** is called before invoking **optimizer.step()**.
