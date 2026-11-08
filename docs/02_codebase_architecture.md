@@ -2,13 +2,13 @@
 
 <br>
 
-The `edufsdp` codebase is structured to maintain a direct, transparent correspondence between theoretical distributed principles and actual implementation details. Rather than relying on complex production wrappers or heavy C++ extensions, the architecture uses standard Python and PyTorch primitives to expose the mechanics of parameter sharding, lifecycle hooks, and state management.
+The *edufsdp* codebase is structured to maintain a direct, transparent correspondence between theoretical distributed principles and actual implementation details. Rather than relying on complex production wrappers or heavy C++ extensions, the architecture uses standard Python and PyTorch primitives to expose the mechanics of parameter sharding, lifecycle hooks, and state management.
 
 The core logic is partitioned into four primary modules:
 
 * **sharded_parameter.py** — Manages local weight slices, global shape abstractions, and state transitions.
 * **hooks.py** — Implements the custom autograd communication function and lifecycle hooks.
-* **fsdp.py** — Orchestrates recursive module wrapping and hook registration.
+* **fsdp.py** — Orchestrates composable block wrapping via `fully_shard` and hook registration.
 * **state_dict.py** — Handles checkpoint conversion between local shards and full global tensors.
 
 <br>
@@ -46,13 +46,13 @@ Four discrete hook classes manage parameter lifecycles by leveraging the paramet
 
 <br>
 
-## 3. FSDP Orchestration Class
+## 3. FSDP Orchestration & 'fully_shard' API
 
-The FSDP wrapper class (`fsdp.py`) acts as the primary user-facing interface for wrapping standard PyTorch models.
+A composable block-level API (`fsdp.py`) centered around the `fully_shard` function controls the granularity of module wrapping across the architecture. Grouping multiple layers into a single wrapped block reduces the number of individual all-gather kernel launches and communication latency at the cost of increased peak memory consumption:
 
-* **Recursive Module Traversal:** When a model is passed to FSDP, the wrapper inspects its submodules and parameters recursively.
-* **Parameter Wrapping:** Standard 'torch.nn.Parameter' instances are converted into managed 'ShardedParameter' objects.
-* **Hook Registration:** It automatically binds the appropriate forward and backward hooks from `hooks.py` to each wrapped module, ensuring that communication collectives occur transparently during training execution.
+* **Composable Block Wrapping:** The user explicitly calls `fully_shard(submodule, device_mesh)` on individual layers or blocks (such as transformer blocks or linear layers).
+* **Parameter Conversion:** Standard 'torch.nn.Parameter' instances are converted into managed 'ShardedParameter' objects.
+* **Local Hook Binding:** Pre- and post-forward/backward hooks from `hooks.py` are attached directly to the specified submodule, ensuring that parameter gathering and gradient reduction occur strictly around that module's compute scope.
 
 <br>
 
