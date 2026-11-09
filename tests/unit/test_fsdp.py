@@ -112,12 +112,17 @@ class TestFSDP(DistributedTestBase):
             pre_hooks = list(submodule._forward_pre_hooks.values())
             post_hooks = list(submodule._forward_hooks.values())
             backward_pre_hooks = list(submodule._backward_pre_hooks.values())
-            backward_post_hooks = list(submodule._backward_hooks.values())
 
             assert any(isinstance(hook, ForwardPreHook) for hook in pre_hooks)
             assert any(isinstance(hook, ForwardPostHook) for hook in post_hooks)
             assert any(isinstance(hook, BackwardPreHook) for hook in backward_pre_hooks)
-            assert any(isinstance(hook, BackwardPostHook) for hook in backward_post_hooks)
+
+            # Verify tensor-level backward post-hooks for parameters owned by this submodule
+            for param_name in sharded_in_submodule:
+                sharded_param = sub_params[param_name]
+                if sharded_param.dtensor.requires_grad:
+                    tensor_hooks = list(sharded_param.dtensor._backward_hooks.values())
+                    assert any(isinstance(hook, BackwardPostHook) for hook in tensor_hooks)
 
             sharded_parameter_names -= sharded_in_submodule
 
@@ -127,7 +132,7 @@ class TestFSDP(DistributedTestBase):
         )
 
     @pytest.mark.parametrize("strategy", ["layer", "block"])
-    def test_fsdp_forward_and_backward_execution(self, strategy: str) -> None:
+    def test_forward_and_backward_execution(self, strategy: str) -> None:
         """
         Verifies end-to-end forward and backward passes
         execute correctly across strategies.

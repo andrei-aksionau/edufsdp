@@ -49,6 +49,10 @@ class TestCustomTrainingConvergence(DistributedTestBase):
         assert len(losses) > 1, f"[Rank {self.rank}] Recorded insufficient loss values."
         start_loss, end_loss = losses[0], losses[-1]
 
+        # TODO: ideally to test that the slop is negative, because out of 5 iterations
+        # the 2-5 iters might have the same value, but since it's smaller than the first -
+        # test passes. Although, in this case the slop will be also negative. So what, check if
+        # all vals aren't identical? Or to have a different test for it?
         assert end_loss < start_loss, (
             f"[Rank {self.rank}] Loss failed to decrease: "
             f"initial={start_loss:.6f}, final={end_loss:.6f}"

@@ -38,7 +38,7 @@ torchrun \
   --master-addr=127.0.0.1 \
   --master-port=29500 \
   demo.py \
-  --num-iterations 1 \
+  --num-iterations 4 \
   --memory-first-iter-only \
   --show-memory-training \
   --no-show-memory-checkpoint \

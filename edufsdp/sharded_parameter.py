@@ -93,8 +93,15 @@ class ShardedParameter:
         # 2. Mount the DTensor Parameter directly on the target module attribute
         setattr(self.module, self.parameter_name, self.dtensor)
 
-        # Reference holder for the full gathered tensor during execution
-        self._gathered_tensor: Tensor | None = None
+        # TODO: add some description
+        # TODO: does it need to be created with full shape and then freed, or we can create of
+        # size of 0?
+        self._full = torch.empty(
+            self.dtensor.shape,
+            dtype=self.dtensor.dtype,
+            device=self.local_shard.device,
+        )
+        self.free_full()
 
     @property
     def fqn(self) -> str:
@@ -112,11 +119,18 @@ class ShardedParameter:
         """Raw rank-local storage slice (`Tensor`) backing the DTensor."""
         return self.dtensor.to_local()
 
+    # TODO: do we even need this?
+    @property
+    def full_buffer(self) -> Tensor:
+        """Persistent full-size buffer. Shape is permanent; memory exists only while gathered."""
+        return self._full
+
     @property
     def is_gathered(self) -> bool:
-        """`True` if the full unsharded tensor is currently attached to the parent module."""
-        return self._gathered_tensor is not None
+        """`True` while the full buffer owns memory (storage size is the source of truth)."""
+        return self._full.untyped_storage().size() > 0
 
+    # TODO: that needs to be updated
     @property
     def shape(self) -> torch.Size:
         """
@@ -126,9 +140,21 @@ class ShardedParameter:
         - SHARDED: Local shard shape (e.g., [12, 18] on 2 ranks)
         """
         if self.is_gathered:
-            assert self._gathered_tensor is not None
-            return self._gathered_tensor.shape
+            return self._full.shape
         return self.local_shard.shape
+
+    # TODO: that doesn't look pretty
+    def allocate_full(self) -> Tensor:
+        """Re-allocates the full buffer's memory if it was freed and returns the buffer."""
+        # TODO: feels odd to have a separate var 'storage', but to return 'full'
+        storage = self._full.untyped_storage()
+        if storage.size() == 0:
+            storage.resize_(self._full.numel() * self._full.element_size())
+        return self._full
+
+    def free_full(self) -> None:
+        """Releases the buffer's memory. Every alias, including saved tensors, is emptied."""
+        self._full.untyped_storage().resize_(0)
 
     def set_unsharded(self, full_tensor: Tensor) -> None:
         """
@@ -146,7 +172,6 @@ class ShardedParameter:
             full_tensor: Unsharded full-size tensor gathered across ranks.
 
         """
-        self._gathered_tensor = full_tensor
         self.module.__dict__[self.parameter_name] = full_tensor
 
     def set_sharded(self) -> None:
@@ -157,4 +182,4 @@ class ShardedParameter:
         PyTorch's CUDA memory manager / Python garbage collector to reclaim the memory.
         """
         self.module.__dict__.pop(self.parameter_name, None)
-        self._gathered_tensor = None
+        self.free_full()

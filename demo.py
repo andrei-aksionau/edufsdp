@@ -108,6 +108,7 @@ def reduce_loss(local_loss: Tensor) -> float:
 
 
 def run_train_step(
+    step_idx: int,
     model: nn.Module,
     optimizer: torch.optim.Optimizer,
     criterion: nn.Module,
@@ -120,7 +121,9 @@ def run_train_step(
     Resets the logger step counter, executes model forward pass, reduces local and global
     loss values, backpropagates gradients, and updates model parameters using the optimizer.
 
+    # TODO: make sure that all docstring don't have dtype
     Args:
+        step_idx: Index of the training step.
         model (nn.Module): FSDP-wrapped PyTorch module.
         optimizer (torch.optim.Optimizer): Optimizer instance attached to model parameters.
         criterion (nn.Module): Loss criterion used to calculate local loss.
@@ -139,7 +142,7 @@ def run_train_step(
 
     # 2. Report Local & Reduced Global Loss
     global_loss = reduce_loss(local_loss)
-    logger.log_header("Loss Values")
+    logger.log_header(f"Loss Values on step {step_idx}")
     logger.log_ordered(f"Local Loss: {local_loss.item():.4f}")
     logger.log_rank0(f"- Global Average Loss: {global_loss:.4f}")
 
@@ -164,7 +167,7 @@ def check_sd_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) -> None:
         device_mesh: Distributed device mesh layout.
 
     """
-    logger.log_section_header("State Dict Checkpoint Verification")
+    logger.log_section_header("State Dict Loading Verification")
 
     for sd_type in StateDictType:
         # Retrieve state dict from the provide model
@@ -187,6 +190,7 @@ def check_sd_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) -> None:
         # Verify that state dictionaries do match
         fresh_sd = StateDictManager.get_state_dict(fresh_fsdp_model, state_dict_type=sd_type)
 
+        # TODO: that should be prettified
         for key in sd:
             val_a = sd[key]
             val_b = fresh_sd[key]
@@ -196,8 +200,8 @@ def check_sd_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) -> None:
             torch.testing.assert_close(a, b)
 
         logger.log_ordered(
-            f"✓ Successfully loaded {sd_type.name.capitalize()} State Dict "
-            "into fresh model instance"
+            f"✓ Successfully loaded '{sd_type.name.capitalize()} State Dict' "
+            "into a fresh model instance"
         )
         logger.log_rank0("\n")
 
@@ -287,7 +291,7 @@ def main() -> None:
         )
 
         with log_hooks_enabled(enabled=should_log):
-            run_train_step(model, optimizer, criterion, local_inputs, local_targets)
+            run_train_step(iter_idx, model, optimizer, criterion, local_inputs, local_targets)
 
     # 5. Check state dict saving/loading with configurable hook visualization
     with log_hooks_enabled(args.show_memory_checkpoint):

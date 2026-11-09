@@ -36,7 +36,8 @@ class TestDemoScript:
         )
         assert result.returncode == 0
         assert (
-            "Successfully loaded Local State Dict into fresh model instance" in result.stdout
+            "Successfully loaded 'Local State Dict' into a fresh model instance"
+            in result.stdout
         )
 
     def test_run_demo_script_as_executable(self) -> None:
@@ -53,5 +54,6 @@ class TestDemoScript:
         )
         assert result.returncode == 0
         assert (
-            "Successfully loaded Local State Dict into fresh model instance" in result.stdout
+            "Successfully loaded 'Local State Dict' into a fresh model instance"
+            in result.stdout
         )

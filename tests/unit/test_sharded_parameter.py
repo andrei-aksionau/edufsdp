@@ -66,12 +66,12 @@ class TestShardedParameter(DistributedTestBase):
         # 1. State before gather (sharded)
         assert not sharded_parameter.is_gathered
         assert sharded_parameter.shape == local_shape
-        assert sharded_parameter._gathered_tensor is None
         assert isinstance(layer.weight, nn.Parameter)
         assert isinstance(layer.weight.data, DTensor)
 
         # 2. Attach gathered full tensor (unsharded)
         fake_gathered_tensor = torch.randn(global_shape)
+        sharded_parameter.allocate_full()
         sharded_parameter.set_unsharded(fake_gathered_tensor)
 
         assert sharded_parameter.is_gathered
@@ -85,7 +85,6 @@ class TestShardedParameter(DistributedTestBase):
 
         assert not sharded_parameter.is_gathered
         assert sharded_parameter.shape == local_shape
-        assert sharded_parameter._gathered_tensor is None
         assert isinstance(layer.weight, nn.Parameter)
         assert isinstance(layer.weight.data, DTensor)
 

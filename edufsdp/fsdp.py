@@ -98,6 +98,10 @@ def fully_shard(module: nn.Module, device_mesh: DeviceMesh) -> nn.Module:
             )
             sharded_parameters[fqn] = sharded_parameter
 
+            # Attach tensor-level hook directly to the DTensor for precise backward reclamation
+            if sharded_parameter.dtensor.requires_grad:
+                sharded_parameter.dtensor.register_hook(BackwardPostHook(sharded_parameter))
+
         # Recurse into child submodules
         for child_name, child_module in submodule.named_children():
             child_prefix = f"{prefix}.{child_name}" if prefix else child_name
@@ -109,9 +113,8 @@ def fully_shard(module: nn.Module, device_mesh: DeviceMesh) -> nn.Module:
     # Register hooks ONCE at the target module level for the entire collected block
     if sharded_parameters:
         module.register_forward_pre_hook(ForwardPreHook(sharded_parameters))
-        module.register_forward_hook(ForwardPostHook(sharded_parameters))
         module.register_full_backward_pre_hook(BackwardPreHook(sharded_parameters))
-        module.register_full_backward_hook(BackwardPostHook(sharded_parameters))
+        module.register_forward_hook(ForwardPostHook(sharded_parameters))
 
         # Store reference to sharded parameters on the module for inspection and checkpointing
         object.__setattr__(module, "_sharded_parameters", sharded_parameters)

@@ -85,14 +85,17 @@ class StateDictManager:
                 if state_dict_type == StateDictType.Local:
                     tensor = sharded_parameter.dtensor
                 else:
-                    gathered = sharded_parameter._gathered_tensor
-                    tensor = (
-                        gathered
-                        if gathered is not None
-                        else FSDPAllGatherFunction.apply(
+                    if sharded_parameter.is_gathered:
+                        # Mid-forward/backward: the full weights are already in the buffer.
+                        tensor = sharded_parameter.full_buffer.detach().clone()
+                    else:
+                        sharded_parameter.allocate_full()
+                        # Borrow the buffer: gather, copy out, give the memory back.
+                        gathered = FSDPAllGatherFunction.apply(
                             sharded_parameter.local_shard, sharded_parameter
                         )
-                    )
+                        tensor = gathered.detach().clone()
+                        sharded_parameter.free_full()
 
             # Store detached copy to prevent state contamination
             state_dict[parameter_name] = tensor.detach().clone()
@@ -136,19 +139,15 @@ class StateDictManager:
             parameter = sharded_parameters_dict[sd_name]
 
             if state_dict_type == StateDictType.Local:
-                # Handle incoming state dict tensor whether it is a DTensor or raw local Tensor
                 local_sd_tensor = (
                     sd_tensor.to_local() if isinstance(sd_tensor, DTensor) else sd_tensor
                 )
                 parameter.local_shard.copy_(local_sd_tensor.to(parameter.local_shard.device))
 
+            # TODO: revisit this section. It works, but could be improved
             elif state_dict_type == StateDictType.Full:
-                # Distribute global tensor across mesh to extract current rank's shard
-                sharded_dtensor = distribute_tensor(
-                    sd_tensor.to(parameter.local_shard.device),
-                    device_mesh=parameter.device_mesh,
-                    placements=[Shard(dim=0)],
-                )
-
-                # Copy shard data into the existing rank-local parameter buffer
-                parameter.local_shard.copy_(sharded_dtensor.to_local())
+                rows = parameter.local_shard.shape[0]
+                start = parameter.device_mesh.get_local_rank() * rows
+                full_tensor = sd_tensor.to(parameter.dtensor.device)
+                assert full_tensor.shape == parameter.dtensor.shape
+                parameter.local_shard.copy_(full_tensor.narrow(0, start, rows))
