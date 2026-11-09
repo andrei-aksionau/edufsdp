@@ -268,6 +268,9 @@ def main() -> None:
     global_inputs = torch.randn(
         world_size * batch_per_rank, model.input_dim, requires_grad=True
     )
+    # Why 'requires_grad=True': a full_backward_hook fires only after the input gradient
+    # is computed, and without a gradient on the input it fires early, resulting in premature
+    # weights freeing. (This path was chosen for simplicity of this educational repo.)
     global_targets = torch.randn(world_size * batch_per_rank, model.output_dim)
 
     # 3. Slice rank-local input batch

@@ -156,5 +156,5 @@ class ShardedParameter:
         This releases references to the full unsharded tensor memory, allowing
         PyTorch's CUDA memory manager / Python garbage collector to reclaim the memory.
         """
-        self.module.__dict__[self.parameter_name] = self.dtensor
+        self.module.__dict__.pop(self.parameter_name, None)
         self._gathered_tensor = None
