@@ -115,8 +115,8 @@ def fully_shard(module: nn.Module, device_mesh: DeviceMesh) -> nn.Module:
     # Register hooks once at the target module level for the entire collected block
     if sharded_parameters:
         module.register_forward_pre_hook(ForwardPreHook(sharded_parameters))
-        module.register_full_backward_pre_hook(BackwardPreHook(sharded_parameters))
         module.register_forward_hook(ForwardPostHook(sharded_parameters))
+        module.register_full_backward_pre_hook(BackwardPreHook(sharded_parameters))
 
         # Store reference to sharded parameters on the module for inspection and checkpointing
         object.__setattr__(module, "_sharded_parameters", sharded_parameters)

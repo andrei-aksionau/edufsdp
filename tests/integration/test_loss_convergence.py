@@ -34,7 +34,7 @@ class TestCustomTrainingConvergence(DistributedTestBase):
     def test_loss_decreases_across_steps(self) -> None:
         """
         Verifies that training loss successfully decreases over
-        a multi-step optimization loop.
+        a multi-step optimization loop with a negative downward trend.
         """
         losses = []
 
@@ -47,15 +47,30 @@ class TestCustomTrainingConvergence(DistributedTestBase):
             losses.append(loss.item())
 
         assert len(losses) > 1, f"[Rank {self.rank}] Recorded insufficient loss values."
+
+        # Ensure values are not completely stagnant/identical
+        assert len(set(losses)) > 1, (
+            f"[Rank {self.rank}] Loss values remained completely flat: {losses}"
+        )
+
         start_loss, end_loss = losses[0], losses[-1]
 
-        # TODO: ideally to test that the slop is negative, because out of 5 iterations
-        # the 2-5 iters might have the same value, but since it's smaller than the first -
-        # test passes. Although, in this case the slop will be also negative. So what, check if
-        # all vals aren't identical? Or to have a different test for it?
+        # Compute simple linear regression slope over steps to verify downward trend
+        n = len(losses)
+        x_mean = (n - 1) / 2.0
+        y_mean = sum(losses) / n
+        numerator = sum((i - x_mean) * (loss - y_mean) for i, loss in enumerate(losses))
+        denominator = sum((i - x_mean) ** 2 for i in range(n))
+        slope = numerator / denominator if denominator != 0 else 0.0
+
         assert end_loss < start_loss, (
             f"[Rank {self.rank}] Loss failed to decrease: "
             f"initial={start_loss:.6f}, final={end_loss:.6f}"
+        )
+
+        assert slope < 0.0, (
+            f"[Rank {self.rank}] Loss failed to exhibit a negative trend: "
+            f"slope={slope:.6f}, history={losses}"
         )
 
     def test_loss_numerical_stability(self) -> None:

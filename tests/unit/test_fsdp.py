@@ -160,3 +160,29 @@ class TestFSDP(DistributedTestBase):
                 *global_shape[1:],
             ])
             assert parameter.grad.to_local().shape == expected_local_shape
+
+    @pytest.mark.parametrize("strategy", ["layer", "block"])
+    def test_missing_backward_pre_hook_raises_error(self, strategy: str) -> None:
+        """
+        Verifies that removing the backward pre-hook causes the backward pass
+        to fail because parameters remain sharded when gradients are computed.
+        """
+        model = ComplexTestModel().to(self.device)
+        self._apply_sharding(model, strategy)
+
+        # Manually remove/deregister the backward pre-hook from the root/owning modules
+        for _, submodule in model.named_modules():
+            if hasattr(submodule, "_backward_pre_hooks"):
+                submodule._backward_pre_hooks.clear()
+
+        batch_size = 4
+        input_tensor = torch.randn(batch_size, model.input_dim, device=self.device)
+
+        # Forward pass works normally
+        output = model(input_tensor)
+        loss = output.sum()
+
+        # Attempting backward without parameters gathered should trigger an error
+        expected_msg = r"setStorage: sizes .* are out of bounds for storage of size 0"
+        with pytest.raises(RuntimeError, match=expected_msg):
+            loss.backward()
