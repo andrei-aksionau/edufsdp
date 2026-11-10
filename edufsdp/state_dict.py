@@ -87,14 +87,14 @@ class StateDictManager:
                 else:
                     if sharded_parameter.is_gathered:
                         # Mid-forward/backward: the full weights are already in the buffer.
-                        tensor = sharded_parameter.full_buffer.detach().clone()
+                        tensor = sharded_parameter.unsharded_buffer.detach().clone()
                     else:
                         # Borrow the buffer: gather, copy out, give the memory back.
                         gathered = FSDPAllGatherFunction.apply(
                             sharded_parameter.local_shard, sharded_parameter
                         )
                         tensor = gathered.detach().clone()
-                        sharded_parameter.free_full()
+                        sharded_parameter.release_unsharded_buffer()
 
             # Store detached copy to prevent state contamination
             state_dict[parameter_name] = tensor.detach().clone()

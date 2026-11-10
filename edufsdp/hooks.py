@@ -103,7 +103,7 @@ class FSDPAllGatherFunction(torch.autograd.Function):
         # assert sharded_parameter.is_gathered, (
         #     "Full buffer has no memory. Call allocate_full()."
         # )
-        full_tensor = sharded_parameter.full_buffer
+        full_tensor = sharded_parameter.unsharded_buffer
 
         # Refilling the buffer bumps its version counter, which autograd would report as
         # an in-place edit of a saved tensor. The data is identical, so we preserve it.
