@@ -15,12 +15,13 @@ The core logic is partitioned into four primary modules:
 
 ## 1. Explicit Parameter Management
 
-The foundational building block of the library is the ShardedParameter class (`sharded_parameter.py`). In a sharded environment, each rank only owns a fraction of any given parameter tensor.
+The foundational building block of the library is the 'ShardedParameter' class (`sharded_parameter.py`). In a sharded environment, each rank only owns a fraction of any given parameter tensor.
 
-* **Local vs. Global Representation:** ShardedParameter wraps the local weight slice residing on the current rank while keeping track of the tensor's global shape and sharding dimension via PyTorch's native DTensor abstractions.
-* **State Manipulation Methods:** ShardedParameter exposes two key state manipulation methods that control whether a module sees its local shard or the fully gathered weight:
+* **Local vs. Global Representation:** 'ShardedParameter' wraps the local weight slice residing on the current rank while keeping track of the tensor's global shape and sharding dimension via PyTorch's native DTensor abstractions.
+* **Lazy Buffer Pattern & Storage Management:** Instead of dynamic allocations, 'ShardedParameter' maintains an internal buffer matching the global parameter shape. It encapsulates all resizing logic, hiding it from hooks. By utilizing buffer resizing down to zero, it ensures physical memory is immediately reclaimed when sharded while keeping the Python tensor shell (with all the metadata) intact for autograd strong-reference compatibility.
+* **State Manipulation Methods:** 'ShardedParameter' exposes two key state manipulation methods that control whether a module sees its local shard or the fully gathered weight:
   * *set_unsharded(full_tensor)*: Mounts the gathered full parameter tensor directly onto the module's attribute dictionary (module.\_\_dict\_\_), allowing normal forward/backward matrix multiplication.
-  * *set_sharded()*: Restores the attribute pointer back to the sharded DTensor and clears the cached full tensor reference (_gathered_tensor = None), freeing memory immediately.
+  * *set_sharded()*: Restores the attribute pointer back to the sharded DTensor and clears the buffer storage back to zero size, freeing memory immediately.
 
 <br>
 
@@ -32,8 +33,8 @@ Distributed training requires precise synchronization timed directly to the exec
 
 `FSDPAllGatherFunction` inherits from `torch.autograd.Function`, integrating distributed communication natively into PyTorch's autograd graph:
 
-* **Forward Pass:** Takes the local shard, reconstructs a sharded DTensor, and redistributes it to 'Replicate()' placement across all ranks via the Gloo backend. This yields the full un-sharded tensor across all ranks.
-* **Backward Pass:** Intercepts incoming gradients, wraps them in a Partial DTensor, and redistributes them via 'redistribute(\[Shard(dim=0)\])'. It then normalizes the sharded gradient by dividing by the world size ($N$), completing the Reduce-Scatter operation.
+* **Forward Pass:** Takes the local shard and runs `dist.all_gather_single` to collect from all ranks the full size tensor using the Gloo backend and copy it into the pre-allocated `_unsharded_buffer`.
+* **Backward Pass:** Intercepts incoming global gradients, runs `dist.reduce_scatter_single` to aggregate and shard gradients across the device mesh. It then normalizes the sharded gradient by dividing by the world size ($N$), completing the Reduce-Scatter operation.
 
 ### Lifecycle Hooks
 

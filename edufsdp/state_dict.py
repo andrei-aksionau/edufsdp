@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, cast
 import torch
 import torch.nn as nn
 from torch import Tensor
-from torch.distributed.tensor import DTensor, Shard, distribute_tensor
+from torch.distributed.tensor import DTensor, distribute_tensor
 
 from edufsdp.hooks import FSDPAllGatherFunction
 
@@ -44,6 +44,7 @@ class StateDictManager:
             Dictionary mapping absolute parameter FQNs to their `ShardedParameter` wrappers.
 
         """
+
         sharded_parameters_dict: dict[str, ShardedParameter] = {}
 
         for _, submodule in module.named_modules():
@@ -73,6 +74,7 @@ class StateDictManager:
             Map of parameter FQNs to local shards or full tensors.
 
         """
+
         state_dict: dict[str, Tensor] = {}
         sharded_parameters_dict = StateDictManager._collect_sharded_parameters(module)
 
@@ -85,14 +87,16 @@ class StateDictManager:
                 if state_dict_type == StateDictType.Local:
                     tensor = sharded_parameter.dtensor
                 else:
-                    gathered = sharded_parameter._gathered_tensor
-                    tensor = (
-                        gathered
-                        if gathered is not None
-                        else FSDPAllGatherFunction.apply(
+                    if sharded_parameter.is_gathered:
+                        # Mid-forward/backward: the full weights are already in the buffer.
+                        tensor = sharded_parameter.unsharded_buffer.detach().clone()
+                    else:
+                        # Borrow the buffer: gather, copy out, give the memory back.
+                        gathered = FSDPAllGatherFunction.apply(
                             sharded_parameter.local_shard, sharded_parameter
                         )
-                    )
+                        tensor = gathered.detach().clone()
+                        sharded_parameter.release_unsharded_buffer()
 
             # Store detached copy to prevent state contamination
             state_dict[parameter_name] = tensor.detach().clone()
@@ -118,6 +122,7 @@ class StateDictManager:
             KeyError: If a parameter in `state_dict` does not exist in `module`.
 
         """
+
         module_named_parameters = dict(module.named_parameters())
         sharded_parameters_dict = StateDictManager._collect_sharded_parameters(module)
 
@@ -136,19 +141,18 @@ class StateDictManager:
             parameter = sharded_parameters_dict[sd_name]
 
             if state_dict_type == StateDictType.Local:
-                # Handle incoming state dict tensor whether it is a DTensor or raw local Tensor
                 local_sd_tensor = (
                     sd_tensor.to_local() if isinstance(sd_tensor, DTensor) else sd_tensor
                 )
                 parameter.local_shard.copy_(local_sd_tensor.to(parameter.local_shard.device))
 
             elif state_dict_type == StateDictType.Full:
-                # Distribute global tensor across mesh to extract current rank's shard
-                sharded_dtensor = distribute_tensor(
-                    sd_tensor.to(parameter.local_shard.device),
-                    device_mesh=parameter.device_mesh,
-                    placements=[Shard(dim=0)],
-                )
+                full_tensor = sd_tensor.to(parameter.dtensor.device)
+                assert full_tensor.shape == parameter.dtensor.shape
 
-                # Copy shard data into the existing rank-local parameter buffer
-                parameter.local_shard.copy_(sharded_dtensor.to_local())
+                sharded_incoming = distribute_tensor(
+                    full_tensor,
+                    device_mesh=parameter.device_mesh,
+                    placements=parameter.dtensor.placements,
+                )
+                parameter.dtensor.copy_(sharded_incoming)

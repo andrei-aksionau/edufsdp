@@ -112,12 +112,17 @@ class TestFSDP(DistributedTestBase):
             pre_hooks = list(submodule._forward_pre_hooks.values())
             post_hooks = list(submodule._forward_hooks.values())
             backward_pre_hooks = list(submodule._backward_pre_hooks.values())
-            backward_post_hooks = list(submodule._backward_hooks.values())
 
             assert any(isinstance(hook, ForwardPreHook) for hook in pre_hooks)
             assert any(isinstance(hook, ForwardPostHook) for hook in post_hooks)
             assert any(isinstance(hook, BackwardPreHook) for hook in backward_pre_hooks)
-            assert any(isinstance(hook, BackwardPostHook) for hook in backward_post_hooks)
+
+            # Verify tensor-level backward post-hooks for parameters owned by this submodule
+            for param_name in sharded_in_submodule:
+                sharded_param = sub_params[param_name]
+                if sharded_param.dtensor.requires_grad:
+                    tensor_hooks = list(sharded_param.dtensor._backward_hooks.values())
+                    assert any(isinstance(hook, BackwardPostHook) for hook in tensor_hooks)
 
             sharded_parameter_names -= sharded_in_submodule
 
@@ -127,7 +132,7 @@ class TestFSDP(DistributedTestBase):
         )
 
     @pytest.mark.parametrize("strategy", ["layer", "block"])
-    def test_fsdp_forward_and_backward_execution(self, strategy: str) -> None:
+    def test_forward_and_backward_execution(self, strategy: str) -> None:
         """
         Verifies end-to-end forward and backward passes
         execute correctly across strategies.
@@ -155,3 +160,29 @@ class TestFSDP(DistributedTestBase):
                 *global_shape[1:],
             ])
             assert parameter.grad.to_local().shape == expected_local_shape
+
+    @pytest.mark.parametrize("strategy", ["layer", "block"])
+    def test_missing_backward_pre_hook_raises_error(self, strategy: str) -> None:
+        """
+        Verifies that removing the backward pre-hook causes the backward pass
+        to fail because parameters remain sharded when gradients are computed.
+        """
+        model = ComplexTestModel().to(self.device)
+        self._apply_sharding(model, strategy)
+
+        # Manually remove/deregister the backward pre-hook from the root/owning modules
+        for _, submodule in model.named_modules():
+            if hasattr(submodule, "_backward_pre_hooks"):
+                submodule._backward_pre_hooks.clear()
+
+        batch_size = 4
+        input_tensor = torch.randn(batch_size, model.input_dim, device=self.device)
+
+        # Forward pass works normally
+        output = model(input_tensor)
+        loss = output.sum()
+
+        # Attempting backward without parameters gathered should trigger an error
+        expected_msg = r"setStorage: sizes .* are out of bounds for storage of size 0"
+        with pytest.raises(RuntimeError, match=expected_msg):
+            loss.backward()
