@@ -96,27 +96,15 @@ class FSDPAllGatherFunction(torch.autograd.Function):
             The reconstructed global parameter tensor assembled via All-Gather.
 
         """
+
         ctx.parameter = sharded_parameter
+        unsharded_buffer = sharded_parameter.unsharded_buffer
 
-        # full_tensor = sharded_parameter.allocate_full()
-        # The caller must allocate the buffer before gathering (see `allocate_full`).
-        # assert sharded_parameter.is_gathered, (
-        #     "Full buffer has no memory. Call allocate_full()."
-        # )
-        full_tensor = sharded_parameter.unsharded_buffer
-
-        # Refilling the buffer bumps its version counter, which autograd would report as
-        # an in-place edit of a saved tensor. The data is identical, so we preserve it.
-        with torch.autograd._unsafe_preserve_version_counter(full_tensor):
-            # Shard(0) -> Replicate()
-            # TODO: The function "" is deprecated `torch.distributed.all_gather_into_tensor` is deprecated. Please use `torch.distributed.all_gather_single` instead.
-            # dist.all_gather_into_tensor(
-            #     full_tensor,
-            #     local_parameter.contiguous(),
-            #     group=sharded_parameter.device_mesh.get_group(),
-            # )
+        # Refilling the buffer bumps its version counter, which autograd
+        # would report as an in-place edit of a saved tensor.
+        with torch.autograd._unsafe_preserve_version_counter(unsharded_buffer):
             dist.all_gather_single(
-                full_tensor,
+                unsharded_buffer,
                 local_parameter.contiguous(),
                 group=sharded_parameter.device_mesh.get_group(),
             )
@@ -125,10 +113,10 @@ class FSDPAllGatherFunction(torch.autograd.Function):
             event_name="all_gather",
             parameter_name=sharded_parameter.fqn,
             shape_before=local_parameter.shape,
-            shape_after=full_tensor.shape,
+            shape_after=unsharded_buffer.shape,
         )
 
-        return full_tensor.detach()
+        return unsharded_buffer.detach()
 
     @staticmethod
     def backward(ctx: Any, *grad_outputs: Any) -> tuple[Tensor, None]:
@@ -148,19 +136,14 @@ class FSDPAllGatherFunction(torch.autograd.Function):
             and None matching non-tensor metadata argument from forward pass.
 
         """
+
         (grad_output,) = grad_outputs
         parameter: ShardedParameter = ctx.parameter
 
+        # Allocate a rank-local buffer for the reduced gradient shard
         sharded_grad = torch.empty_like(parameter.local_shard)
 
-        # Partial() -> Shard(0): sum across ranks, keep only this rank's slice
-        # TODO: The function "" is deprecated `torch.distributed.reduce_scatter_tensor` is deprecated. Please use `torch.distributed.reduce_scatter_single` instead.
-        # dist.reduce_scatter_tensor(
-        #     sharded_grad,
-        #     grad_output.contiguous(),
-        #     op=dist.ReduceOp.SUM,
-        #     group=parameter.device_mesh.get_group(),
-        # )
+        # Aggregate full gradients across ranks and scatter shards back to respective owners
         dist.reduce_scatter_single(
             sharded_grad,
             grad_output.contiguous(),
@@ -199,6 +182,7 @@ class ForwardPreHook:
             sharded_parameters: Dictionary of target sharded parameters managed by this hook.
 
         """
+
         self.sharded_parameters = sharded_parameters
 
     def __call__(self, module: nn.Module, inputs: Any) -> None:
@@ -238,6 +222,7 @@ class ForwardPostHook:
             sharded_parameters: Dictionary of target sharded parameters managed by this hook.
 
         """
+
         self.sharded_parameters = sharded_parameters
 
     def __call__(self, module: nn.Module, args: tuple[Any, ...], output: Any) -> None:
@@ -275,6 +260,7 @@ class BackwardPreHook:
             sharded_parameters: Dictionary of target sharded parameters managed by this hook.
 
         """
+
         self.sharded_parameters = sharded_parameters
 
     def __call__(self, module: nn.Module, grad_output: Any) -> None:
@@ -295,28 +281,24 @@ class BackwardPreHook:
 
 class BackwardPostHook:
     """
-    Module backward post-hook that frees gathered parameters after gradient computations.
+    Module/Parameter backward post-hook that frees the gathered parameter after gradient
+    computations.
 
     Triggers after layer gradient calculations complete. Releases full parameter memory,
-    leaving only sharded 1/N local parameters and 1/N local gradient shards in device memory.
+    leaving only sharded 1/N local parameter in device memory.
     """
 
     def __init__(self, sharded_parameter: ShardedParameter) -> None:
         """
-        Initializes the hook with its target sharded parameters.
+        Initializes the hook with its target sharded parameter.
 
         Args:
-            sharded_parameters: Dictionary of target sharded parameters managed by this hook.
+            sharded_parameter: Target sharded parameter instance managed by this hook.
 
         """
+
         self.sharded_parameter = sharded_parameter
 
-    # def __call__(
-    #     self,
-    #     module: nn.Module,
-    #     grad_input: Tensor | tuple[Tensor, ...],
-    #     grad_output: Tensor | tuple[Tensor, ...],
-    # ) -> None:
     def __call__(self, *args: Any, **kwargs: Any) -> None:
         """Frees gathered full parameters after layer backward pass execution."""
 
