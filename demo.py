@@ -41,6 +41,7 @@ def init_distributed() -> None:
     preventing IPv6 DNS resolution warnings and connection timeouts. Sets a rank-indexed
     seed for reproducible local data generation.
     """
+
     os.environ["MASTER_ADDR"] = os.environ.get("MASTER_ADDR", "127.0.0.1")
     os.environ["MASTER_PORT"] = os.environ.get("MASTER_PORT", "29500")
 
@@ -66,7 +67,7 @@ def log_hooks_enabled(enabled: bool = True) -> Generator[None]:
     Context manager to safely toggle hook logging during a code block.
 
     Args:
-        enabled (bool): If True, enables `logger.log_hooks` for the duration of the context
+        enabled: If True, enables `logger.log_hooks` for the duration of the context
             and restores previous logger state upon exit. If False, yields immediately without
             altering logger state.
 
@@ -74,6 +75,7 @@ def log_hooks_enabled(enabled: bool = True) -> Generator[None]:
         None
 
     """
+
     if not enabled:
         yield
         return
@@ -95,10 +97,10 @@ def reduce_loss(local_loss: Tensor) -> float:
     scales the resulting scalar tensor by the world size, and returns the reduced Python float.
 
     Args:
-        local_loss (Tensor): Local scalar loss tensor calculated on the current rank.
+        local_loss: Local scalar loss tensor calculated on the current rank.
 
     Returns:
-        float: Mean global loss calculated across all ranks.
+        Mean global loss calculated across all ranks.
 
     """
     loss_tensor = local_loss.detach().clone()
@@ -121,16 +123,16 @@ def run_train_step(
     Resets the logger step counter, executes model forward pass, reduces local and global
     loss values, backpropagates gradients, and updates model parameters using the optimizer.
 
-    # TODO: make sure that all docstring don't have dtype
     Args:
         step_idx: Index of the training step.
-        model (nn.Module): FSDP-wrapped PyTorch module.
-        optimizer (torch.optim.Optimizer): Optimizer instance attached to model parameters.
-        criterion (nn.Module): Loss criterion used to calculate local loss.
-        inputs (Tensor): Rank-local micro-batch input tensor.
-        targets (Tensor): Rank-local target tensor corresponding to local inputs.
+        model: FSDP-wrapped PyTorch module.
+        optimizer: Optimizer instance attached to model parameters.
+        criterion: Loss criterion used to calculate local loss.
+        inputs: Rank-local micro-batch input tensor.
+        targets: Rank-local target tensor corresponding to local inputs.
 
     """
+
     logger.reset_layer_prefix()
 
     # 1. Forward Pass
@@ -158,7 +160,7 @@ def run_train_step(
     optimizer.step()
 
 
-def check_sd_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) -> None:
+def verify_state_dict_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) -> None:
     """
     Validates state dict extraction and restoration across Local and Full formats.
 
@@ -169,38 +171,44 @@ def check_sd_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) -> None:
     """
     logger.log_section_header("State Dict Loading Verification")
 
-    for sd_type in StateDictType:
-        # Retrieve state dict from the provide model
-        sd = StateDictManager.get_state_dict(fsdp_model, state_dict_type=sd_type)
-        logger.log_header(f"{sd_type.name.capitalize()} State Dict")
-        for name, tensor in sd.items():
+    for state_dict_type in StateDictType:
+        # Retrieve state dict from the provided model
+        original_state_dict = StateDictManager.get_state_dict(fsdp_model, state_dict_type)
+        logger.log_header(f"{state_dict_type.name.capitalize()} State Dict")
+        for name, tensor in original_state_dict.items():
             shape = tuple(
                 tensor.to_local().shape if isinstance(tensor, DTensor) else tensor.shape
             )
             logger.log_rank0(f"  {name:<25} │ {shape}")
         logger.log_rank0("\n")
 
-        # Create a new model with random weight, load state_dict into it
+        # Create a new model with random weights, load state_dict into it
         fresh_fsdp_model = MLP()
         fully_shard(fresh_fsdp_model.layer1, device_mesh)
         fully_shard(fresh_fsdp_model.layer2, device_mesh)
         fully_shard(fresh_fsdp_model, device_mesh)
-        StateDictManager.load_state_dict(fresh_fsdp_model, sd, state_dict_type=sd_type)
+        StateDictManager.load_state_dict(
+            fresh_fsdp_model, original_state_dict, state_dict_type
+        )
 
         # Verify that state dictionaries do match
-        fresh_sd = StateDictManager.get_state_dict(fresh_fsdp_model, state_dict_type=sd_type)
+        restored_state_dict = StateDictManager.get_state_dict(
+            fresh_fsdp_model, state_dict_type=state_dict_type
+        )
 
-        # TODO: that should be prettified
-        for key in sd:
-            val_a = sd[key]
-            val_b = fresh_sd[key]
+        for parameter_name in original_state_dict:
+            tensor_original = original_state_dict[parameter_name]
+            tensor_restored = restored_state_dict[parameter_name]
 
-            a = val_a.to_local() if isinstance(val_a, DTensor) else val_a
-            b = val_b.to_local() if isinstance(val_b, DTensor) else val_b
-            torch.testing.assert_close(a, b)
+            if isinstance(tensor_original, DTensor):
+                tensor_original = tensor_original.to_local()
+            if isinstance(tensor_restored, DTensor):
+                tensor_restored = tensor_restored.to_local()
+
+            torch.testing.assert_close(tensor_original, tensor_restored)
 
         logger.log_ordered(
-            f"✓ Successfully loaded '{sd_type.name.capitalize()} State Dict' "
+            f"✓ Successfully loaded '{state_dict_type.name.capitalize()} State Dict' "
             "into a fresh model instance"
         )
         logger.log_rank0("\n")
@@ -214,6 +222,7 @@ def parse_args() -> argparse.Namespace:
         Structured namespace containing parsed CLI options and runtime flags.
 
     """
+
     parser = argparse.ArgumentParser(description="Educational FSDP Training Script")
     parser.add_argument(
         "--num-iterations",
@@ -251,6 +260,7 @@ def main() -> None:
     Parallelism, executes the training step loop with selective ASCII memory logging,
     and validates state dict saving/loading.
     """
+
     args = parse_args()
 
     init_distributed()
@@ -295,7 +305,7 @@ def main() -> None:
 
     # 5. Check state dict saving/loading with configurable hook visualization
     with log_hooks_enabled(args.show_memory_checkpoint):
-        check_sd_loading(model, mesh)
+        verify_state_dict_loading(model, mesh)
 
     dist.destroy_process_group()
 
