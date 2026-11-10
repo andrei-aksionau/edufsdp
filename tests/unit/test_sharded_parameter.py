@@ -71,7 +71,7 @@ class TestShardedParameter(DistributedTestBase):
 
         # 2. Attach gathered full tensor (unsharded)
         fake_gathered_tensor = torch.randn(global_shape)
-        sharded_parameter.allocate_full()
+        _ = sharded_parameter.full_buffer  # Accessing full_buffer will resize it if it's zero
         sharded_parameter.set_unsharded(fake_gathered_tensor)
 
         assert sharded_parameter.is_gathered

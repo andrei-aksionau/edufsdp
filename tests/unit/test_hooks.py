@@ -39,7 +39,6 @@ class TestHooks(DistributedTestBase):
         local_parameter = sharded_parameter.local_shard.detach().requires_grad_(True)
 
         # 1. Test Forward All-Gather
-        sharded_parameter.allocate_full()
         gathered_tensor = FSDPAllGatherFunction.apply(local_parameter, sharded_parameter)
 
         assert gathered_tensor.shape == global_shape

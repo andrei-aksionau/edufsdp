@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, cast
 import torch
 import torch.nn as nn
 from torch import Tensor
-from torch.distributed.tensor import DTensor, Shard, distribute_tensor
+from torch.distributed.tensor import DTensor
 
 from edufsdp.hooks import FSDPAllGatherFunction
 
@@ -89,7 +89,6 @@ class StateDictManager:
                         # Mid-forward/backward: the full weights are already in the buffer.
                         tensor = sharded_parameter.full_buffer.detach().clone()
                     else:
-                        sharded_parameter.allocate_full()
                         # Borrow the buffer: gather, copy out, give the memory back.
                         gathered = FSDPAllGatherFunction.apply(
                             sharded_parameter.local_shard, sharded_parameter

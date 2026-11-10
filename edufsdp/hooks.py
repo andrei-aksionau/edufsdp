@@ -61,7 +61,6 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 from torch import distributed as dist
-from torch.distributed.tensor import DTensor, Partial, Replicate, Shard
 
 from edufsdp.logging import logger
 
@@ -101,9 +100,9 @@ class FSDPAllGatherFunction(torch.autograd.Function):
 
         # full_tensor = sharded_parameter.allocate_full()
         # The caller must allocate the buffer before gathering (see `allocate_full`).
-        assert sharded_parameter.is_gathered, (
-            "Full buffer has no memory. Call allocate_full()."
-        )
+        # assert sharded_parameter.is_gathered, (
+        #     "Full buffer has no memory. Call allocate_full()."
+        # )
         full_tensor = sharded_parameter.full_buffer
 
         # Refilling the buffer bumps its version counter, which autograd would report as
@@ -208,8 +207,6 @@ class ForwardPreHook:
             if sharded_parameter.is_gathered:
                 continue
 
-            sharded_parameter.allocate_full()
-
             # Run All-Gather with or without autograd graph tracking
             if sharded_parameter.dtensor.requires_grad and torch.is_grad_enabled():
                 full_tensor = FSDPAllGatherFunction.apply(
@@ -289,7 +286,6 @@ class BackwardPreHook:
             # Prevent autograd from recording a duplicate AllGather graph node
             # during backward execution, which would trigger graph mutation errors.
             with torch.no_grad():
-                sharded_parameter.allocate_full()
                 full_tensor = FSDPAllGatherFunction.apply(
                     sharded_parameter.local_shard, sharded_parameter
                 )

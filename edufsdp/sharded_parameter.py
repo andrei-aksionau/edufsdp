@@ -123,6 +123,9 @@ class ShardedParameter:
     @property
     def full_buffer(self) -> Tensor:
         """Persistent full-size buffer. Shape is permanent; memory exists only while gathered."""
+        storage = self._full.untyped_storage()
+        if storage.size() == 0:
+            storage.resize_(self._full.numel() * self._full.element_size())
         return self._full
 
     @property
@@ -144,13 +147,13 @@ class ShardedParameter:
         return self.local_shard.shape
 
     # TODO: that doesn't look pretty
-    def allocate_full(self) -> Tensor:
-        """Re-allocates the full buffer's memory if it was freed and returns the buffer."""
-        # TODO: feels odd to have a separate var 'storage', but to return 'full'
-        storage = self._full.untyped_storage()
-        if storage.size() == 0:
-            storage.resize_(self._full.numel() * self._full.element_size())
-        return self._full
+    # def allocate_full(self) -> Tensor:
+    #     """Re-allocates the full buffer's memory if it was freed and returns the buffer."""
+    #     # TODO: feels odd to have a separate var 'storage', but to return 'full'
+    #     storage = self._full.untyped_storage()
+    #     if storage.size() == 0:
+    #         storage.resize_(self._full.numel() * self._full.element_size())
+    #     return self._full
 
     def free_full(self) -> None:
         """Releases the buffer's memory. Every alias, including saved tensors, is emptied."""
