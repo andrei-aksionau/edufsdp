@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, cast
 import torch
 import torch.nn as nn
 from torch import Tensor
-from torch.distributed.tensor import DTensor
+from torch.distributed.tensor import DTensor, distribute_tensor
 
 from edufsdp.hooks import FSDPAllGatherFunction
 
@@ -44,6 +44,7 @@ class StateDictManager:
             Dictionary mapping absolute parameter FQNs to their `ShardedParameter` wrappers.
 
         """
+
         sharded_parameters_dict: dict[str, ShardedParameter] = {}
 
         for _, submodule in module.named_modules():
@@ -73,6 +74,7 @@ class StateDictManager:
             Map of parameter FQNs to local shards or full tensors.
 
         """
+
         state_dict: dict[str, Tensor] = {}
         sharded_parameters_dict = StateDictManager._collect_sharded_parameters(module)
 
@@ -120,6 +122,7 @@ class StateDictManager:
             KeyError: If a parameter in `state_dict` does not exist in `module`.
 
         """
+
         module_named_parameters = dict(module.named_parameters())
         sharded_parameters_dict = StateDictManager._collect_sharded_parameters(module)
 
@@ -143,10 +146,13 @@ class StateDictManager:
                 )
                 parameter.local_shard.copy_(local_sd_tensor.to(parameter.local_shard.device))
 
-            # TODO: revisit this section. It works, but could be improved
             elif state_dict_type == StateDictType.Full:
-                rows = parameter.local_shard.shape[0]
-                start = parameter.device_mesh.get_local_rank() * rows
                 full_tensor = sd_tensor.to(parameter.dtensor.device)
                 assert full_tensor.shape == parameter.dtensor.shape
-                parameter.local_shard.copy_(full_tensor.narrow(0, start, rows))
+
+                sharded_incoming = distribute_tensor(
+                    full_tensor,
+                    device_mesh=parameter.device_mesh,
+                    placements=parameter.dtensor.placements,
+                )
+                parameter.dtensor.copy_(sharded_incoming)
