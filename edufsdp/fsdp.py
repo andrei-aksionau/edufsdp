@@ -1,8 +1,9 @@
 """
-Educational FSDP Wrapper module.
+Core FSDP wrapping and unit orchestration for Educational FSDP.
 
-Transforms a target `nn.Module` by recursively sharding parameters across ranks
-and attaching pre/post execution hooks for automatic parameter gathering and freeing.
+Provides the primary user-facing entrypoint (`fully_shard`) to wrap PyTorch modules,
+collecting subtree parameters, registering collective module-level pre-hooks, and
+attaching tensor-level hooks for immediate backward gradient-time reclamation.
 
 Execution lifecycle for each submodule:
 
@@ -53,15 +54,16 @@ def fully_shard(module: nn.Module, device_mesh: DeviceMesh) -> nn.Module:
     Shards a PyTorch module and its entire un-sharded subtree as a single FSDP unit.
 
     Recursively collects all parameters within the module's subtree into a single dictionary,
-    registers execution hooks exclusively on the target module, and respects pre-sharded
-    child boundaries.
+    registers forward pre/post-hooks and backward pre-hooks on the target module, and binds
+    tensor-level backward post-hooks directly to parameter DTensors to ensure precise
+    gradient-time reclamation and prevent premature memory release.
 
     Args:
         module: Target PyTorch module (e.g., a TransformerBlock or the whole model) to shard.
         device_mesh: PyTorch DeviceMesh defining process rank layout for sharding.
 
     Returns:
-        The sharded module instance (passed in).
+        The sharded module instance.
 
     """
 
@@ -110,7 +112,7 @@ def fully_shard(module: nn.Module, device_mesh: DeviceMesh) -> nn.Module:
     # Execute subtree parameter collection starting from the target module
     _collect_subtree(module)
 
-    # Register hooks ONCE at the target module level for the entire collected block
+    # Register hooks once at the target module level for the entire collected block
     if sharded_parameters:
         module.register_forward_pre_hook(ForwardPreHook(sharded_parameters))
         module.register_full_backward_pre_hook(BackwardPreHook(sharded_parameters))
