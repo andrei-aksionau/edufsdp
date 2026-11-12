@@ -39,7 +39,7 @@ Execution lifecycle for each submodule:
                                                  └──────────────────────────────────────┘
 """
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from edufsdp.hooks import BackwardPostHook, BackwardPreHook, ForwardPostHook, ForwardPreHook
 from edufsdp.sharded_parameter import ShardedParameter
@@ -65,31 +65,22 @@ def fully_shard(module: nn.Module, device_mesh: DeviceMesh) -> nn.Module:
     Returns:
         The sharded module instance.
     """
+    # Prevent repeated wrapping and FQN modification.
     if hasattr(module, "_sharded_parameters"):
         return module
 
     sharded_parameters: dict[str, ShardedParameter] = {}
 
     def _collect_subtree(submodule: nn.Module, prefix: str = "") -> None:
-        """Recursively collects parameters across the subtree into the root dictionary."""
-        # If this child is already an independent sharded unit, do not absorb its parameters.
-        # Instead, patch its FQNs with the new prefix.
+        """Collects parameters not already managed by nested FSDP units."""
+        # Independently wrapped children manage their own parameters.
         if submodule is not module and hasattr(submodule, "_sharded_parameters"):
-            existing_params = cast(
-                "dict[str, ShardedParameter]",
-                submodule._sharded_parameters,
-            )
-            updated_params: dict[str, ShardedParameter] = {}
-            for old_key, sharded_param in existing_params.items():
-                absolute_fqn = f"{prefix}.{old_key}" if prefix else old_key
-                sharded_param.fqn = absolute_fqn  # Property setter updates name & fqn
-                updated_params[absolute_fqn] = sharded_param
-            object.__setattr__(submodule, "_sharded_parameters", updated_params)
             return
 
-        # Collect parameters owned directly by this submodule
+        # Collect parameters owned directly by this submodule.
         for param_name, parameter in submodule.named_parameters(recurse=False):
             fqn = f"{prefix}.{param_name}" if prefix else param_name
+
             sharded_parameter = ShardedParameter(
                 fqn=fqn,
                 module=submodule,
@@ -98,25 +89,46 @@ def fully_shard(module: nn.Module, device_mesh: DeviceMesh) -> nn.Module:
             )
             sharded_parameters[fqn] = sharded_parameter
 
-            # Attach tensor-level hook directly to the DTensor for precise backward reclamation
+            # Register tensor-level backward hook for gradient-time reclamation.
             if sharded_parameter.dtensor.requires_grad:
                 sharded_parameter.dtensor.register_hook(BackwardPostHook(sharded_parameter))
 
-        # Recurse into child submodules
+        # Recurse into child modules.
         for child_name, child_module in submodule.named_children():
             child_prefix = f"{prefix}.{child_name}" if prefix else child_name
             _collect_subtree(child_module, prefix=child_prefix)
 
-    # Execute subtree parameter collection starting from the target module
     _collect_subtree(module)
 
-    # Register hooks once at the target module level for the entire collected block
+    # Mark the module as wrapped, even when it manages no parameters itself.
+    object.__setattr__(module, "_sharded_parameters", sharded_parameters)
+
+    # Register hooks only when this FSDP unit manages parameters.
     if sharded_parameters:
         module.register_forward_pre_hook(ForwardPreHook(sharded_parameters))
         module.register_forward_hook(ForwardPostHook(sharded_parameters))
         module.register_full_backward_pre_hook(BackwardPreHook(sharded_parameters))
 
-        # Store reference to sharded parameters on the module for inspection and checkpointing
-        object.__setattr__(module, "_sharded_parameters", sharded_parameters)
+    # Build a mapping of module objects to their names relative to this FSDP root.
+    module_names = {id(submodule): name for name, submodule in module.named_modules()}
+
+    # Normalize FQNs in every FSDP unit within this subtree.
+    for _, submodule in module.named_modules():
+        if not hasattr(submodule, "_sharded_parameters"):
+            continue
+
+        existing_params = submodule._sharded_parameters
+        updated_params: dict[str, ShardedParameter] = {}
+
+        for sharded_parameter in existing_params.values():
+            owner_name = module_names[id(sharded_parameter.module)]
+            parameter_name = sharded_parameter.parameter_name
+
+            absolute_fqn = f"{owner_name}.{parameter_name}" if owner_name else parameter_name
+
+            sharded_parameter.fqn = absolute_fqn
+            updated_params[absolute_fqn] = sharded_parameter
+
+        object.__setattr__(submodule, "_sharded_parameters", updated_params)
 
     return module

@@ -42,4 +42,4 @@ torchrun \
   --log-memory-transition \
   --log-memory-transition-first-iter-only \
   --no-log-checkpoint-memory-transition \
-  2>&1 | grep --line-buffered -v "Redirects are currently not supported in MacOs"
+  2>&1 | sed '/Redirects are currently not supported in MacOs/d'
