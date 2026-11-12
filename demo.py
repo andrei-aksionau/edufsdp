@@ -58,7 +58,7 @@ def init_distributed() -> None:
     if not dist.is_initialized():
         dist.init_process_group(backend="gloo")
     # Distinct seed per rank for reproducible rank-local data generation
-    torch.manual_seed(42 + dist.get_rank())
+    torch.manual_seed(42)
 
 
 @contextmanager
@@ -274,12 +274,7 @@ def main() -> None:
 
     # 2. Prepare a distinct shard of the total batch for each rank (Data Parallelism)
     batch_per_rank = 2
-    global_inputs = torch.randn(
-        world_size * batch_per_rank, model.input_dim, requires_grad=True
-    )
-    # Why 'requires_grad=True': a full_backward_hook fires only after the input gradient
-    # is computed, and without a gradient on the input it fires early, resulting in premature
-    # weights freeing. (This path was chosen for simplicity of this educational repo.)
+    global_inputs = torch.randn(world_size * batch_per_rank, model.input_dim)
     global_targets = torch.randn(world_size * batch_per_rank, model.output_dim)
 
     # 3. Slice rank-local input batch
