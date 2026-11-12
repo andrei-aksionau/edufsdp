@@ -90,26 +90,6 @@ def log_hooks_enabled(enabled: bool = True) -> Generator[None]:
         logger.reset_layer_prefix()
 
 
-def reduce_loss(local_loss: Tensor) -> float:
-    """
-    Computes mean loss across all distributed process ranks for logging.
-
-    Performs an `all_reduce` sum across all process group ranks using `dist.ReduceOp.SUM`,
-    scales the resulting scalar tensor by the world size, and returns the reduced Python float.
-
-    Args:
-        local_loss: Local scalar loss tensor calculated on the current rank.
-
-    Returns:
-        Mean global loss calculated across all ranks.
-
-    """
-    loss_tensor = local_loss.detach().clone()
-    dist.all_reduce(loss_tensor, op=dist.ReduceOp.SUM)
-    loss_tensor /= dist.get_world_size()
-    return loss_tensor.item()
-
-
 def run_train_step(
     step_idx: int,
     model: nn.Module,
@@ -143,13 +123,17 @@ def run_train_step(
     outputs = model(inputs)
     local_loss = criterion(outputs, targets)
 
-    # 2. Report Local & Reduced Global Loss
-    global_loss = reduce_loss(local_loss)
+    # 2. Calculate global average loss
+    global_loss = local_loss.detach().clone()
+    dist.all_reduce(global_loss, op=dist.ReduceOp.SUM)
+    global_loss /= dist.get_world_size()
+
+    # 3. Report Local & Reduced Global Loss
     logger.log_header(f"Loss Values on step {step_idx}")
     logger.log_ordered(f"Local Loss: {local_loss.item():.4f}")
     logger.log_rank0(f"- Global Average Loss: {global_loss:.4f}")
 
-    # 3. Backward Pass
+    # 4. Backward Pass
     if logger.log_hooks:
         logger.reset_layer_prefix()
         logger.log_section_header("Backward Pass")
@@ -157,7 +141,7 @@ def run_train_step(
     optimizer.zero_grad()
     local_loss.backward()
 
-    # 4. Optimizer Step
+    # 5. Optimizer Step
     optimizer.step()
 
 
