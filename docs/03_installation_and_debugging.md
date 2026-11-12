@@ -176,7 +176,7 @@ Running distributed training across multiple CPU processes via the Gloo backend 
 ### 1. Communication Hangs / Deadlocks
 
 * **Symptom:** The script freezes indefinitely during forward or backward passes.
-* **Cause:** Rank desynchronization. If one rank enters a communication collective (like an All-Gather hook) while another rank diverges or skips a layer, the Gloo backend blocks waiting for the missing process.
+* **Cause:** Rank resynchronization. If one rank enters a communication collective (like an All-Gather hook) while another rank diverges or skips a layer, the Gloo backend blocks waiting for the missing process.
 * **Solution:** Ensure that all ranks execute identical control flow paths. Avoid conditional layer execution based on rank ID unless explicitly coordinated.
 
 ### 2. Interface Binding Issues on Linux/macOS
