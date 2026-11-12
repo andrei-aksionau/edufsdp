@@ -25,7 +25,6 @@ class ASCIIVisualizer:
             rank: Distributed rank index of current process.
             world_size: Total process count in distributed mesh.
         """
-
         self.bar_width = bar_width
         self.rank = rank
         self.world_size = world_size
@@ -66,7 +65,6 @@ class ASCIIVisualizer:
         Returns:
             Formatted ASCII memory layout string enclosed in brackets.
         """
-
         return self.gathered_bar if is_gathered else self.non_gathered_bar
 
     def render_transition_bars(
@@ -84,7 +82,6 @@ class ASCIIVisualizer:
         Returns:
             Tuple containing formatted before and after ASCII layout strings.
         """
-
         numel_before = shape_before.numel()
         numel_after = shape_after.numel()
 
@@ -111,7 +108,6 @@ class RankLogger:
         Rank, world size and the visualizer are resolved lazily, because this object is
         created at import time, before the process group exists.
         """
-
         self.last_layer_prefix: str | None = None
         self.log_hooks = False
 
@@ -140,7 +136,6 @@ class RankLogger:
         Returns:
             Formatted message prefixed with process rank details.
         """
-
         return f"[Rank {self.rank}/{self.world_size}] {message}"
 
     def log(self, message: str) -> None:
@@ -191,7 +186,6 @@ class RankLogger:
         Returns:
             Extracted top-level layer attribute prefix.
         """
-
         prefix, _, _ = parameter_name.partition(".")
         return prefix if prefix else parameter_name
 

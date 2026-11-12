@@ -103,7 +103,6 @@ class TestShardingPlacement(DistributedTestBase):
         Verifies that all wrapped layer parameters rest in a sharded state matching rank
         placement.
         """
-
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
 
@@ -122,7 +121,6 @@ class TestShardingPlacement(DistributedTestBase):
         Verifies that ForwardPreHook gathers all parameters to global shape prior to forward
         execution.
         """
-
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
 
@@ -164,7 +162,6 @@ class TestShardingPlacement(DistributedTestBase):
         Verifies that ForwardPostHook frees gathered parameters back to local sharded shapes
         post execution.
         """
-
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
 
@@ -224,7 +221,6 @@ class TestShardingPlacement(DistributedTestBase):
         Verifies that gradients are computed, sharded, and match local parameter shapes post
         loss.backward().
         """
-
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
 
@@ -255,7 +251,6 @@ class TestShardingPlacement(DistributedTestBase):
         Verifies that module weights return to sharded shapes post-backward and grad holds
         sharded gradients.
         """
-
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
 

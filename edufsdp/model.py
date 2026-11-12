@@ -45,7 +45,6 @@ class MLP(nn.Module):
         Returns:
             Output tensor of shape `(batch_size, output_dim)`.
         """
-
         x = self.layer1(x)
         x = self.relu(x)
         return self.layer2(x)

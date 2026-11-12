@@ -62,7 +62,6 @@ class TestStateDictManager1(DistributedTestBase):
         Sets up device mesh and computes expected global/local shapes
         for ComplexTestModel.
         """
-
         super().setup_method(method)
         if not dist.is_initialized():
             return
@@ -106,7 +105,6 @@ class TestStateDictManager1(DistributedTestBase):
         Verifies extraction of Local state dict returns
         rank-local shard shapes and values.
         """
-
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
 
@@ -129,7 +127,6 @@ class TestStateDictManager1(DistributedTestBase):
         Verifies extraction of Full state dict consolidates global tensors matching
         the unsharded baseline.
         """
-
         torch.manual_seed(42)
         base_model = ComplexTestModel().to(self.device)
 
@@ -156,7 +153,6 @@ class TestStateDictManager1(DistributedTestBase):
         Verifies that extracting a Full state dict gathers tensors during extraction
         but leaves parameters sharded.
         """
-
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
         sharded_parameters = StateDictManager._collect_sharded_parameters(model)
@@ -198,7 +194,6 @@ class TestStateDictManager1(DistributedTestBase):
         Verifies reloading Full format state dict correctly redistributes
         global tensors across ranks.
         """
-
         model_src = ComplexTestModel().to(self.device)
         self._apply_sharding(model_src, strategy)
         full_state_dict = StateDictManager.get_state_dict(model_src, StateDictType.Full)
@@ -221,7 +216,6 @@ class TestStateDictManager1(DistributedTestBase):
         Verifies KeyError is raised when incoming state dict contains
         a parameter not present in module.
         """
-
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
         invalid_state_dict = {"nonexistent.weight": torch.zeros(2, 2)}

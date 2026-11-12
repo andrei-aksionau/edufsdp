@@ -91,7 +91,6 @@ class TestFSDP(DistributedTestBase):
         Verifies that exact FSDP hook instances are registered
         on owning submodules/containers.
         """
-
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
 
@@ -137,7 +136,6 @@ class TestFSDP(DistributedTestBase):
         Verifies end-to-end forward and backward passes
         execute correctly across strategies.
         """
-
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
 

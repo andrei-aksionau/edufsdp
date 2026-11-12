@@ -28,7 +28,6 @@ def _run_markdown_snippet_worker(
     code_str: str,
 ) -> None:
     """Target function executed inside each worker process for markdown code snippets."""
-
     _init_distributed_environment(rank, world_size, port)
 
     # Since code snippets contain their own imports, an empty or minimal global scope suffices
@@ -41,7 +40,6 @@ def _get_markdown_code_snippets() -> list[tuple[str, str, int]]:
 
     Returns an instance of MarkdownSnippet containing name, code content and world size.
     """
-
     # Navigate up from tests/integration/test_docs_code_snippets.py to project root
     docs_dir = Path(__file__).parents[2] / "docs"
     if not docs_dir.exists():
@@ -90,7 +88,6 @@ def test_markdown_code_snippet(snippet: MarkdownSnippet) -> None:
     Spawns distributed worker processes to execute an extracted documentation
     code snippet.
     """
-
     port = get_free_port()
     torch.multiprocessing.spawn(
         _run_markdown_snippet_worker,

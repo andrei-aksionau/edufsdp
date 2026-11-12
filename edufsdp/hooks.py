@@ -95,7 +95,6 @@ class FSDPAllGatherFunction(torch.autograd.Function):
         Returns:
             The reconstructed global parameter tensor assembled via All-Gather.
         """
-
         ctx.parameter = sharded_parameter
         unsharded_buffer = sharded_parameter.unsharded_buffer
 
@@ -134,7 +133,6 @@ class FSDPAllGatherFunction(torch.autograd.Function):
             Rank-local sharded gradient tensor scaled by world size,
             and None matching non-tensor metadata argument from forward pass.
         """
-
         (grad_output,) = grad_outputs
         parameter: ShardedParameter = ctx.parameter
 
@@ -179,7 +177,6 @@ class ForwardPreHook:
         Args:
             sharded_parameters: Dictionary of target sharded parameters managed by this hook.
         """
-
         self.sharded_parameters = sharded_parameters
 
     def __call__(self, module: nn.Module, inputs: Any) -> None:
@@ -218,7 +215,6 @@ class ForwardPostHook:
         Args:
             sharded_parameters: Dictionary of target sharded parameters managed by this hook.
         """
-
         self.sharded_parameters = sharded_parameters
 
     def __call__(self, module: nn.Module, args: tuple[Any, ...], output: Any) -> None:
@@ -255,7 +251,6 @@ class BackwardPreHook:
         Args:
             sharded_parameters: Dictionary of target sharded parameters managed by this hook.
         """
-
         self.sharded_parameters = sharded_parameters
 
     def __call__(self, module: nn.Module, grad_output: Any) -> None:
@@ -290,12 +285,10 @@ class BackwardPostHook:
         Args:
             sharded_parameter: Target sharded parameter instance managed by this hook.
         """
-
         self.sharded_parameter = sharded_parameter
 
     def __call__(self, *args: Any, **kwargs: Any) -> None:
         """Frees gathered full parameters after layer backward pass execution."""
-
         if not self.sharded_parameter.is_gathered:
             return
 

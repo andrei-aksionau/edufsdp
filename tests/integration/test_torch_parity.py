@@ -93,7 +93,6 @@ class TestDTensorStructureParity(TestParityBase):
         Verifies parameter types, placements, device mesh, local shapes, and gradient
         DTensor types.
         """
-
         out_custom = self.wrapped_custom(self.dummy_input)
         out_custom.sum().backward()
 
@@ -134,7 +133,6 @@ class TestOptimizerStateParity(TestParityBase):
         Verifies optimizer state buffer names, sharding shapes, and parity post optimizer
         step().
         """
-
         optimizer_custom = torch.optim.Adam(self.wrapped_custom.parameters(), lr=0.001)
         optimizer_reference = torch.optim.Adam(self.wrapped_reference.parameters(), lr=0.001)
 
@@ -178,7 +176,6 @@ class TestExecutionLifecycleParity(TestParityBase):
         1. Verifies that parameters are correctly sharded immediately upon wrapping for both
         models.
         """
-
         for parameter_name, (
             _global_shape,
             expected_local_shape,
@@ -197,7 +194,6 @@ class TestExecutionLifecycleParity(TestParityBase):
         2. Verifies that parameters are all-gathered during the forward pass in both
         models.
         """
-
         custom_shapes_during_forward: dict[str, Size] = {}
         reference_shapes_during_forward: dict[str, Size] = {}
 
@@ -242,7 +238,6 @@ class TestExecutionLifecycleParity(TestParityBase):
         3. Verifies that parameters are resharded back to local shapes after forward in both
         models.
         """
-
         self.wrapped_custom(self.dummy_input)
         self.wrapped_reference(self.dummy_input)
 
@@ -260,7 +255,6 @@ class TestExecutionLifecycleParity(TestParityBase):
         4. Verifies that parameters are all-gathered during the backward pass in both
         models.
         """
-
         custom_shapes_during_backward: dict[str, torch.Size] = {}
         reference_shapes_during_backward: dict[str, torch.Size] = {}
 
@@ -305,7 +299,6 @@ class TestExecutionLifecycleParity(TestParityBase):
         5. Verifies that gradients are reduce-scattered to local sharded shapes matching
         Native FSDP2.
         """
-
         self.wrapped_custom(self.dummy_input).sum().backward()
         self.wrapped_reference(self.dummy_input).sum().backward()
 
@@ -332,7 +325,6 @@ class TestExecutionLifecycleParity(TestParityBase):
         6. Verifies that parameters are resharded back to local shapes after backward in
         both models.
         """
-
         self.wrapped_custom(self.dummy_input).sum().backward()
         self.wrapped_reference(self.dummy_input).sum().backward()
 
@@ -355,7 +347,6 @@ class TestConvergenceParity(TestParityBase):
         Verifies forward outputs and loss values match Native FSDP2 over a 5-step SGD
         training loop.
         """
-
         custom_optimizer = torch.optim.SGD(self.wrapped_custom.parameters(), lr=0.01)
         reference_optimizer = torch.optim.SGD(self.wrapped_reference.parameters(), lr=0.01)
 

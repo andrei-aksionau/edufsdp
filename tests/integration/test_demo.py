@@ -24,7 +24,6 @@ class TestDemoScript:
         Verifies that the FSDP inspection shell script executes successfully
         via torchrun and outputs the expected success confirmation.
         """
-
         bash_path = shutil.which("bash")
         assert bash_path is not None
 
@@ -45,7 +44,6 @@ class TestDemoScript:
         Verifies that the FSDP inspection shell script executes successfully as executable
         and doesn't throw permission errors.
         """
-
         result = subprocess.run(
             ["./run_demo.sh", "--nprocs", "2"],
             capture_output=True,

@@ -54,7 +54,6 @@ class SimpleMLP(nn.Module):
         Returns:
             Output tensor of shape (batch_size, 8).
         """
-
         return self.fc2(self.fc1(x))
 
 
@@ -107,7 +106,6 @@ class DistributedTestBase:
         Recursively discovers and fully_shards all submodules owning parameters
         dynamically.
         """
-
         model = copy.deepcopy(self.base_model)
 
         for _, submodule in model.named_modules():

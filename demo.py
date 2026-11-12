@@ -42,7 +42,6 @@ def init_distributed() -> None:
     preventing IPv6 DNS resolution warnings and connection timeouts. Sets a rank-indexed
     seed for reproducible local data generation.
     """
-
     os.environ["MASTER_ADDR"] = os.environ.get("MASTER_ADDR", "127.0.0.1")
     os.environ["MASTER_PORT"] = os.environ.get("MASTER_PORT", "29500")
 
@@ -75,7 +74,6 @@ def log_hooks_enabled(enabled: bool = True) -> Generator[None]:
     Yields:
         None
     """
-
     if not enabled:
         yield
         return
@@ -111,7 +109,6 @@ def run_train_step(
         inputs: Rank-local micro-batch input tensor.
         targets: Rank-local target tensor corresponding to local inputs.
     """
-
     logger.reset_layer_prefix()
 
     # 1. Forward Pass
@@ -151,7 +148,6 @@ def verify_state_dict_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) ->
         fsdp_model: Trained FSDP model instance.
         device_mesh: Distributed device mesh layout.
     """
-
     logger.log_section_header("State Dict Loading Verification")
 
     for state_dict_type in StateDictType:
@@ -212,7 +208,6 @@ def parse_args() -> TrainingConfig:
     Returns:
         Structured namespace containing parsed CLI options and runtime flags.
     """
-
     parser = argparse.ArgumentParser(description="Educational FSDP Training Script")
     parser.add_argument(
         "--num-iterations",
@@ -261,7 +256,6 @@ def main() -> None:
     Parallelism, executes the training step loop with selective ASCII memory logging,
     and validates state dict saving/loading.
     """
-
     args = parse_args()
 
     init_distributed()

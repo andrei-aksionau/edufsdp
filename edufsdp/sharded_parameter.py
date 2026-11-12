@@ -64,7 +64,6 @@ class ShardedParameter:
             parameter: Unsharded source parameter to split across ranks.
             device_mesh: PyTorch DeviceMesh defining rank layout.
         """
-
         self.fqn = fqn
         self.module = module
         self.device_mesh = device_mesh
@@ -136,7 +135,6 @@ class ShardedParameter:
         - GATHERED: Global shape (e.g., [24, 18])
         - SHARDED: Local shard shape (e.g., [12, 18] on 2 ranks)
         """
-
         if self.is_gathered:
             return self._unsharded_buffer.shape
         return self.local_shard.shape
@@ -155,7 +153,6 @@ class ShardedParameter:
         (size 0), accessing this property automatically triggers storage allocation to
         fit the full global shape.
         """
-
         storage = self._unsharded_buffer.untyped_storage()
         if storage.size() == 0:
             storage.resize_(
@@ -178,7 +175,6 @@ class ShardedParameter:
         Args:
             full_tensor: Unsharded full-size tensor gathered across ranks.
         """
-
         self.module.__dict__[self.parameter_name] = full_tensor
 
     def set_sharded(self) -> None:
@@ -188,6 +184,5 @@ class ShardedParameter:
         This release the reference to the full unsharded tensor memory,
         and resize down the underlying storage to zero bytes to release memory.
         """
-
         self.module.__dict__.pop(self.parameter_name, None)
         self.release_unsharded_buffer()
