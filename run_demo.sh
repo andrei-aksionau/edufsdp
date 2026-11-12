@@ -39,7 +39,7 @@ torchrun \
   --master-port=29500 \
   demo.py \
   --num-iterations 4 \
-  --memory-first-iter-only \
-  --show-memory-training \
-  --no-show-memory-checkpoint \
+  --log-memory-transition \
+  --log-memory-transition-first-iter-only \
+  --no-log-checkpoint-memory-transition \
   2>&1 | grep --line-buffered -v "Redirects are currently not supported in MacOs"

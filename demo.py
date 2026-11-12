@@ -13,6 +13,7 @@ import argparse
 import os
 import platform
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import torch
@@ -214,9 +215,17 @@ def verify_state_dict_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) ->
         logger.log_rank0("\n")
 
 
-def parse_args() -> argparse.Namespace:
+@dataclass
+class TrainingConfig:
+    num_iterations: int
+    log_memory_transition: bool
+    log_memory_transition_first_iter_only: bool
+    log_checkpoint_memory_transition: bool
+
+
+def parse_args() -> TrainingConfig:
     """
-    Configures command-line options for training steps and visual memory logs.
+    Configures command-line options for training steps and memory visualization logs.
 
     Returns:
         Structured namespace containing parsed CLI options and runtime flags.
@@ -231,24 +240,35 @@ def parse_args() -> argparse.Namespace:
         help="Number of training iterations to run.",
     )
     parser.add_argument(
-        "--show-memory-training",
+        "--log-memory-transition",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Enable/disable ASCII memory state logs during training passes.",
+        help="Enable or disable ASCII memory transition logs during training passes.",
     )
     parser.add_argument(
-        "--memory-first-iter-only",
+        "--log-memory-transition-first-iter-only",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="If True and num_iterations > 1, show memory logs only during the first step.",
+        help=(
+            "If True and num_iterations > 1, "
+            "restrict memory logs to the first training iteration."
+        ),
     )
     parser.add_argument(
-        "--show-memory-checkpoint",
+        "--log-checkpoint-memory-transition",
         action=argparse.BooleanOptionalAction,
         default=False,
-        help="Enable/disable ASCII memory state logs during state dict gathering.",
+        help="Enable or disable ASCII memory transition logs during state dict gathering.",
     )
-    return parser.parse_args()
+
+    parsed = parser.parse_args()
+
+    return TrainingConfig(
+        num_iterations=parsed.num_iterations,
+        log_memory_transition=parsed.log_memory_transition,
+        log_memory_transition_first_iter_only=parsed.log_memory_transition_first_iter_only,
+        log_checkpoint_memory_transition=parsed.log_checkpoint_memory_transition,
+    )
 
 
 def main() -> None:
@@ -296,15 +316,15 @@ def main() -> None:
     # 4. Execute training loop with selective memory logging
     for iter_idx in range(args.num_iterations):
         # Determine whether memory hooks should log during this iteration
-        should_log = args.show_memory_training and (
-            not args.memory_first_iter_only or iter_idx == 0
+        should_log = args.log_memory_transition and (
+            not args.log_memory_transition_first_iter_only or iter_idx == 0
         )
 
         with log_hooks_enabled(enabled=should_log):
             run_train_step(iter_idx, model, optimizer, criterion, local_inputs, local_targets)
 
     # 5. Check state dict saving/loading with configurable hook visualization
-    with log_hooks_enabled(args.show_memory_checkpoint):
+    with log_hooks_enabled(args.log_checkpoint_memory_transition):
         verify_state_dict_loading(model, mesh)
 
     dist.destroy_process_group()
