@@ -51,33 +51,60 @@ if TYPE_CHECKING:
 
 def fully_shard(module: nn.Module, device_mesh: DeviceMesh) -> nn.Module:
     """
-    Shards a PyTorch module and its entire un-sharded subtree as a single FSDP unit.
+    Shards a PyTorch module and its unsharded subtree as a single FSDP unit.
 
-    Recursively collects all parameters within the module's subtree into a single dictionary,
-    registers forward pre/post-hooks and backward pre-hooks on the target module, and binds
-    tensor-level backward post-hooks directly to parameter DTensors to ensure precise
-    gradient-time reclamation and prevent premature memory release.
+    Recursively collects all parameters within the module's subtree, registers
+    lifecycle hooks, and normalizes fully qualified names across the hierarchy.
 
     Args:
-        module: Target PyTorch module (e.g., a TransformerBlock or the whole model) to shard.
+        module: Target PyTorch module to shard.
         device_mesh: PyTorch DeviceMesh defining process rank layout for sharding.
 
     Returns:
         The sharded module instance.
     """
-    # Prevent repeated wrapping and FQN modification.
+    # Prevent repeated wrapping and FQN modification if the module is already sharded.
     if hasattr(module, "_sharded_parameters"):
         return module
 
+    # Step 1: Collect all parameters within this module's un-wrapped subtree.
+    sharded_parameters = _collect_subtree_parameters(module, device_mesh)
+
+    # Attach the collected sharded parameter map to the root module object.
+    object.__setattr__(module, "_sharded_parameters", sharded_parameters)
+
+    # Step 2: Register FSDP communication and memory management hooks if parameters exist.
+    if sharded_parameters:
+        _register_fsdp_hooks(module, sharded_parameters)
+
+    # Step 3: Normalize absolute fully qualified names (FQNs) across all nested FSDP units.
+    _normalize_subtree_fqns(module)
+
+    return module
+
+
+def _collect_subtree_parameters(
+    root_module: nn.Module, device_mesh: DeviceMesh
+) -> dict[str, ShardedParameter]:
+    """
+    Recursively traverses the module subtree to discover and wrap parameters.
+
+    Stops traversal when encountering independently wrapped nested FSDP units.
+    Wraps each raw PyTorch parameter into a managed ShardedParameter instance.
+
+    Args:
+        root_module: The root module of the current FSDP wrapping boundary.
+        device_mesh: PyTorch DeviceMesh specifying process group layout.
+
+    Returns:
+        A dictionary mapping absolute fully qualified names to ShardedParameter instances.
+    """
     sharded_parameters: dict[str, ShardedParameter] = {}
 
-    def _collect_subtree(submodule: nn.Module, prefix: str = "") -> None:
-        """Collects parameters not already managed by nested FSDP units."""
-        # Independently wrapped children manage their own parameters.
-        if submodule is not module and hasattr(submodule, "_sharded_parameters"):
+    def _recurse(submodule: nn.Module, prefix: str = "") -> None:
+        if submodule is not root_module and hasattr(submodule, "_sharded_parameters"):
             return
 
-        # Collect parameters owned directly by this submodule.
         for param_name, parameter in submodule.named_parameters(recurse=False):
             fqn = f"{prefix}.{param_name}" if prefix else param_name
 
@@ -89,31 +116,53 @@ def fully_shard(module: nn.Module, device_mesh: DeviceMesh) -> nn.Module:
             )
             sharded_parameters[fqn] = sharded_parameter
 
-            # Register tensor-level backward hook for gradient-time reclamation.
-            if sharded_parameter.dtensor.requires_grad:
-                sharded_parameter.dtensor.register_hook(BackwardPostHook(sharded_parameter))
-
-        # Recurse into child modules.
         for child_name, child_module in submodule.named_children():
             child_prefix = f"{prefix}.{child_name}" if prefix else child_name
-            _collect_subtree(child_module, prefix=child_prefix)
+            _recurse(child_module, prefix=child_prefix)
 
-    _collect_subtree(module)
+    _recurse(root_module)
+    return sharded_parameters
 
-    # Mark the module as wrapped, even when it manages no parameters itself.
-    object.__setattr__(module, "_sharded_parameters", sharded_parameters)
 
-    # Register hooks only when this FSDP unit manages parameters.
-    if sharded_parameters:
-        module.register_forward_pre_hook(ForwardPreHook(sharded_parameters))
-        module.register_forward_hook(ForwardPostHook(sharded_parameters))
-        module.register_full_backward_pre_hook(BackwardPreHook(sharded_parameters))
+def _register_fsdp_hooks(
+    module: nn.Module, sharded_parameters: dict[str, ShardedParameter]
+) -> None:
+    """
+    Attaches module-level hooks and parameter-level tensor hooks for FSDP coordination.
 
-    # Build a mapping of module objects to their names relative to this FSDP root.
-    module_names = {id(submodule): name for name, submodule in module.named_modules()}
+    Registers module forward pre/post-hooks and backward pre-hooks to manage global
+    all-gather and clean-up phases. Additionally, iterates through the provided
+    sharded parameters to bind tensor-level `BackwardPostHook` directly to each
+    individual parameter DTensor. This ensures that memory reclamation happens
+    immediately upon gradient completion for each specific parameter, avoiding race
+    conditions during block-level wrapping.
 
-    # Normalize FQNs in every FSDP unit within this subtree.
-    for _, submodule in module.named_modules():
+    Args:
+        module: The target PyTorch module receiving the hooks.
+        sharded_parameters: Dictionary of sharded parameters managed by this FSDP unit.
+    """
+    module.register_forward_pre_hook(ForwardPreHook(sharded_parameters))
+    module.register_forward_hook(ForwardPostHook(sharded_parameters))
+    module.register_full_backward_pre_hook(BackwardPreHook(sharded_parameters))
+
+    for sharded_parameter in sharded_parameters.values():
+        if sharded_parameter.dtensor.requires_grad:
+            sharded_parameter.dtensor.register_hook(BackwardPostHook(sharded_parameter))
+
+
+def _normalize_subtree_fqns(root_module: nn.Module) -> None:
+    """
+    Normalizes parameter fully qualified names (FQNs) relative to the root module hierarchy.
+
+    Inspected module names are mapped and assigned to each sharded parameter to ensure
+    consistent naming across distributed ranks and checkpointing boundaries.
+
+    Args:
+        root_module: The root module whose subtree FQNs require normalization.
+    """
+    module_names = {id(submodule): name for name, submodule in root_module.named_modules()}
+
+    for _, submodule in root_module.named_modules():
         if not hasattr(submodule, "_sharded_parameters"):
             continue
 
@@ -130,5 +179,3 @@ def fully_shard(module: nn.Module, device_mesh: DeviceMesh) -> nn.Module:
             updated_params[absolute_fqn] = sharded_parameter
 
         object.__setattr__(submodule, "_sharded_parameters", updated_params)
-
-    return module
