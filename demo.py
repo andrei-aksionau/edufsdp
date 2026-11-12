@@ -58,7 +58,7 @@ def init_distributed() -> None:
     if not dist.is_initialized():
         dist.init_process_group(backend="gloo")
     # Distinct seed per rank for reproducible rank-local data generation
-    torch.manual_seed(42)
+    torch.manual_seed(42 + dist.get_rank())
 
 
 @contextmanager
@@ -274,8 +274,13 @@ def main() -> None:
 
     # 2. Prepare a distinct shard of the total batch for each rank (Data Parallelism)
     batch_per_rank = 2
-    global_inputs = torch.randn(world_size * batch_per_rank, model.input_dim)
-    global_targets = torch.randn(world_size * batch_per_rank, model.output_dim)
+    data_generator = torch.Generator().manual_seed(42)
+    global_inputs = torch.randn(
+        world_size * batch_per_rank, model.input_dim, generator=data_generator
+    )
+    global_targets = torch.randn(
+        world_size * batch_per_rank, model.output_dim, generator=data_generator
+    )
 
     # 3. Slice rank-local input batch
     start_idx = rank * batch_per_rank
