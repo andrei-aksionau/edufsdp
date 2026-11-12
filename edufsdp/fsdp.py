@@ -64,7 +64,6 @@ def fully_shard(module: nn.Module, device_mesh: DeviceMesh) -> nn.Module:
 
     Returns:
         The sharded module instance.
-
     """
 
     if hasattr(module, "_sharded_parameters"):

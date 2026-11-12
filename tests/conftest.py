@@ -31,6 +31,7 @@ def _init_distributed_environment(rank: int, world_size: int, port: str) -> None
     Configures standard PyTorch distributed environment variables and initializes
     the Gloo process group with loopback interface bindings.
     """
+
     # Configure PyTorch Distributed environment variables
     os.environ["MASTER_ADDR"] = "127.0.0.1"
     os.environ["MASTER_PORT"] = port
@@ -98,6 +99,7 @@ def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> bool | None:
     this hook intercepts standard single-process execution and instead spawns `world_size`
     isolated CPU worker processes.
     """
+
     marker = pyfuncitem.get_closest_marker("multi_rank")
     if not marker:
         return None  # Fall back to standard single-process pytest execution

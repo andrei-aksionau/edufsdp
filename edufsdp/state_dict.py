@@ -42,7 +42,6 @@ class StateDictManager:
 
         Returns:
             Dictionary mapping absolute parameter FQNs to their `ShardedParameter` wrappers.
-
         """
 
         sharded_parameters_dict: dict[str, ShardedParameter] = {}
@@ -72,7 +71,6 @@ class StateDictManager:
 
         Returns:
             Map of parameter FQNs to local shards or full tensors.
-
         """
 
         state_dict: dict[str, Tensor] = {}
@@ -120,7 +118,6 @@ class StateDictManager:
 
         Raises:
             KeyError: If a parameter in `state_dict` does not exist in `module`.
-
         """
 
         module_named_parameters = dict(module.named_parameters())

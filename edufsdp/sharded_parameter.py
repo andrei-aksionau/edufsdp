@@ -63,7 +63,6 @@ class ShardedParameter:
             module: Parent PyTorch module owning this parameter.
             parameter: Unsharded source parameter to split across ranks.
             device_mesh: PyTorch DeviceMesh defining rank layout.
-
         """
 
         self.fqn = fqn
@@ -178,7 +177,6 @@ class ShardedParameter:
 
         Args:
             full_tensor: Unsharded full-size tensor gathered across ranks.
-
         """
 
         self.module.__dict__[self.parameter_name] = full_tensor

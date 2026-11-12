@@ -28,7 +28,6 @@ class SimpleMLP(nn.Module):
     Attributes:
         fc1: First linear projection without bias (in_features=16, out_features=4).
         fc2: Second linear projection without bias (in_features=4, out_features=8).
-
     """
 
     def __init__(self) -> None:
@@ -54,8 +53,8 @@ class SimpleMLP(nn.Module):
 
         Returns:
             Output tensor of shape (batch_size, 8).
-
         """
+
         return self.fc2(self.fc1(x))
 
 

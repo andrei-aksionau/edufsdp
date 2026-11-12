@@ -24,8 +24,8 @@ class ASCIIVisualizer:
             bar_width: Character width of the output ASCII bar.
             rank: Distributed rank index of current process.
             world_size: Total process count in distributed mesh.
-
         """
+
         self.bar_width = bar_width
         self.rank = rank
         self.world_size = world_size
@@ -65,8 +65,8 @@ class ASCIIVisualizer:
 
         Returns:
             Formatted ASCII memory layout string enclosed in brackets.
-
         """
+
         return self.gathered_bar if is_gathered else self.non_gathered_bar
 
     def render_transition_bars(
@@ -83,8 +83,8 @@ class ASCIIVisualizer:
 
         Returns:
             Tuple containing formatted before and after ASCII layout strings.
-
         """
+
         numel_before = shape_before.numel()
         numel_after = shape_after.numel()
 
@@ -111,6 +111,7 @@ class RankLogger:
         Rank, world size and the visualizer are resolved lazily, because this object is
         created at import time, before the process group exists.
         """
+
         self.last_layer_prefix: str | None = None
         self.log_hooks = False
 
@@ -138,8 +139,8 @@ class RankLogger:
 
         Returns:
             Formatted message prefixed with process rank details.
-
         """
+
         return f"[Rank {self.rank}/{self.world_size}] {message}"
 
     def log(self, message: str) -> None:
@@ -162,10 +163,6 @@ class RankLogger:
         """Logs a prominent block header (e.g. 'LOSS VALUES') on Rank 0."""
         title = f" {title} ".center(width, symbol)
         self.log_rank0(f"\n\n{title}\n")
-
-    def log_divider(self, symbol: str = "#", width: int = 30) -> None:
-        """Logs a visual divider line on Rank 0."""
-        self.log_rank0(f"\n{symbol * width}")
 
     def log_ordered(self, message: str, add_rank_info: bool = True) -> None:
         """Guarantees sequentially ordered stdout across all ranks via process barriers."""
@@ -193,8 +190,8 @@ class RankLogger:
 
         Returns:
             Extracted top-level layer attribute prefix.
-
         """
+
         prefix, _, _ = parameter_name.partition(".")
         return prefix if prefix else parameter_name
 
@@ -232,15 +229,15 @@ class RankLogger:
         self.last_layer_prefix = current_prefix
 
         # Print entries to a table
-        log_entry_divider = "─" if self.rank == 0 else "⁻"
-        shape_str = f"{tuple(shape_before)} -> {tuple(shape_after)}"
+        table_row_divider = "─" if self.rank == 0 else "⁻"
+        shapes_str = f"{tuple(shape_before)} -> {tuple(shape_after)}"
 
         msg = (
-            f"{log_entry_divider * self.LINE_WIDTH}\n"
+            f"{table_row_divider * self.LINE_WIDTH}\n"
             f"Rank {self.rank} │ {parameter_name:<{self.PARAM_COLUMN_WIDTH}} │ "
             f"{event_name:<{self.EVENT_COLUMN_WIDTH}} │ "
             f"Shard: {before_bar} -> {after_bar} │ "
-            f"Shape: {shape_str}\n"
+            f"Shape: {shapes_str}\n"
         )
 
         self.log_ordered(msg, add_rank_info=False)

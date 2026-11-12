@@ -74,7 +74,6 @@ def log_hooks_enabled(enabled: bool = True) -> Generator[None]:
 
     Yields:
         None
-
     """
 
     if not enabled:
@@ -111,7 +110,6 @@ def run_train_step(
         criterion: Loss criterion used to calculate local loss.
         inputs: Rank-local micro-batch input tensor.
         targets: Rank-local target tensor corresponding to local inputs.
-
     """
 
     logger.reset_layer_prefix()
@@ -152,8 +150,8 @@ def verify_state_dict_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) ->
     Args:
         fsdp_model: Trained FSDP model instance.
         device_mesh: Distributed device mesh layout.
-
     """
+
     logger.log_section_header("State Dict Loading Verification")
 
     for state_dict_type in StateDictType:
@@ -213,7 +211,6 @@ def parse_args() -> TrainingConfig:
 
     Returns:
         Structured namespace containing parsed CLI options and runtime flags.
-
     """
 
     parser = argparse.ArgumentParser(description="Educational FSDP Training Script")

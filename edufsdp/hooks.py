@@ -94,7 +94,6 @@ class FSDPAllGatherFunction(torch.autograd.Function):
 
         Returns:
             The reconstructed global parameter tensor assembled via All-Gather.
-
         """
 
         ctx.parameter = sharded_parameter
@@ -134,7 +133,6 @@ class FSDPAllGatherFunction(torch.autograd.Function):
         Returns:
             Rank-local sharded gradient tensor scaled by world size,
             and None matching non-tensor metadata argument from forward pass.
-
         """
 
         (grad_output,) = grad_outputs
@@ -180,7 +178,6 @@ class ForwardPreHook:
 
         Args:
             sharded_parameters: Dictionary of target sharded parameters managed by this hook.
-
         """
 
         self.sharded_parameters = sharded_parameters
@@ -220,7 +217,6 @@ class ForwardPostHook:
 
         Args:
             sharded_parameters: Dictionary of target sharded parameters managed by this hook.
-
         """
 
         self.sharded_parameters = sharded_parameters
@@ -258,7 +254,6 @@ class BackwardPreHook:
 
         Args:
             sharded_parameters: Dictionary of target sharded parameters managed by this hook.
-
         """
 
         self.sharded_parameters = sharded_parameters
@@ -294,7 +289,6 @@ class BackwardPostHook:
 
         Args:
             sharded_parameter: Target sharded parameter instance managed by this hook.
-
         """
 
         self.sharded_parameter = sharded_parameter
