@@ -91,7 +91,6 @@ class TestFSDP(DistributedTestBase):
         Verifies that exact FSDP hook instances are registered
         on owning submodules/containers.
         """
-
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
 
@@ -137,7 +136,6 @@ class TestFSDP(DistributedTestBase):
         Verifies end-to-end forward and backward passes
         execute correctly across strategies.
         """
-
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
 
@@ -186,3 +184,103 @@ class TestFSDP(DistributedTestBase):
         expected_msg = r"setStorage: sizes .* are out of bounds for storage of size 0"
         with pytest.raises(RuntimeError, match=expected_msg):
             loss.backward()
+
+    def test_sharded_parameters_fqn_propagation_through_nested_wrappers(self) -> None:
+        """
+        Verifies FQN consistency across independently wrapped modules
+        when their parent modules are progressively wrapped.
+        """
+        model = ComplexTestModel().to(self.device)
+
+        # First, independently shard leaf modules.
+        fully_shard(model.block1.fc1, self.device_mesh)
+        fully_shard(model.block2.fc1, self.device_mesh)
+
+        # Next, wrap their parent blocks.
+        fully_shard(model.block1, self.device_mesh)
+        fully_shard(model.block2, self.device_mesh)
+
+        # Finally, wrap the root model.
+        fully_shard(model, self.device_mesh)
+
+        expected_fqns = set(dict(model.named_parameters()))
+
+        # Map each module object to its absolute name in the model hierarchy.
+        module_names = {id(submodule): name for name, submodule in model.named_modules()}
+
+        observed_fqns = set()
+
+        # Inspect every FSDP unit, including nested independently wrapped units.
+        for wrapper_name, wrapper_module in model.named_modules():
+            if not hasattr(wrapper_module, "_sharded_parameters"):
+                continue
+
+            for fqn, sharded_parameter in wrapper_module._sharded_parameters.items():
+                owner_name = module_names[id(sharded_parameter.module)]
+
+                expected_fqn = (
+                    f"{owner_name}.{sharded_parameter.parameter_name}"
+                    if owner_name
+                    else sharded_parameter.parameter_name
+                )
+
+                assert fqn == expected_fqn, (
+                    f"Incorrect FQN in wrapper '{wrapper_name}': "
+                    f"got '{fqn}', expected '{expected_fqn}'"
+                )
+
+                assert sharded_parameter.fqn == expected_fqn
+
+                observed_fqns.add(fqn)
+
+        # Every model parameter must belong to exactly one FSDP unit.
+        assert observed_fqns == expected_fqns
+
+        # Recursive collection must also preserve all absolute FQNs.
+        collected_parameters = StateDictManager._collect_sharded_parameters(model)
+
+        assert set(collected_parameters) == expected_fqns
+
+        for fqn, sharded_parameter in collected_parameters.items():
+            assert sharded_parameter.fqn == fqn
+
+    def test_fully_shard_is_idempotent_for_parameterless_root(self) -> None:
+        """
+        Verifies that repeatedly wrapping a root with only independently
+        wrapped descendants doesn't modify their parameter FQNs.
+        """
+        model = ComplexTestModel().to(self.device)
+
+        # Independently wrap every parameter-bearing leaf module.
+        leaf_modules = [
+            model.block1.fc1,
+            model.block1.fc2,
+            model.block2.fc1,
+            model.block2.fc2,
+            model.lm_head,
+        ]
+
+        for leaf_module in leaf_modules:
+            fully_shard(leaf_module, self.device_mesh)
+
+        # All parameter-bearing descendants are already independent FSDP units.
+        fully_shard(model, self.device_mesh)
+
+        def snapshot_fqns() -> dict[tuple[str, str], tuple[int, str]]:
+            return {
+                (module_name, fqn): (
+                    id(sharded_parameter),
+                    sharded_parameter.fqn,
+                )
+                for module_name, submodule in model.named_modules()
+                if hasattr(submodule, "_sharded_parameters")
+                for fqn, sharded_parameter in submodule._sharded_parameters.items()
+            }
+
+        original_snapshot = snapshot_fqns()
+
+        # Repeated wrapping must not modify existing metadata.
+        fully_shard(model, self.device_mesh)
+        fully_shard(model, self.device_mesh)
+
+        assert snapshot_fqns() == original_snapshot

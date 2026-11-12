@@ -105,7 +105,6 @@ class TestHooks(DistributedTestBase):
         Verifies that forward hooks correctly manage multiple sharded parameters
         together.
         """
-
         # Setup multiple parameters (fc1 and fc2) managed by a single hook dictionary
         param1 = self.base_model.fc1.weight
         param2 = self.base_model.fc2.weight
@@ -198,7 +197,6 @@ class TestHooks(DistributedTestBase):
         Verifies that backward hooks correctly manage multiple sharded parameters
         together.
         """
-
         # Setup multiple parameters (fc1 and fc2) managed by a single hook dictionary
         param_1 = self.base_model.fc1.weight
         param_2 = self.base_model.fc2.weight

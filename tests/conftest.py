@@ -73,7 +73,6 @@ def _spawn_worker(
     Populates standard PyTorch distributed environment variables, sets up loopback
     network interfaces for Gloo, and executes the target test function or method.
     """
-
     _init_distributed_environment(rank, world_size, port)
 
     # Execute class methods with bound `self` instance, or plain functions directly

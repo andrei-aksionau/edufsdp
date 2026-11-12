@@ -33,10 +33,10 @@ lint.select = [
 lint.ignore = [
   "any-type",  # ANN401: Dynamically typed expressions (typing.Any)
   "assert",  # S101: assert detected
-  "blank-line-after-function",  # D202: No blank lines allowed after function docstring
   "hardcoded-temp-file",  # S108: Probable insecure usage of temporary file or directory
   "lambda-assignment",  # E731: Do not assign a lambda expression, use a def
   "missing-blank-line-after-summary",  # D205: 1 blank line required between summary line and description
+  "missing-blank-line-after-last-section",  # D413: Missing blank line after last section
   "missing-return-type-private-function",  # ANN202: Missing return type annotation for private function
   "missing-return-type-special-method",  # ANN204: Missing return type annotation for special method `__init__`
   "module-import-not-at-top-of-file",  # E402: Module level import not at top of file
@@ -54,6 +54,9 @@ lint.ignore = [
 ]
 
 line-length = 95
+
+[lint.pydocstyle]
+convention = "google"
 
 [lint.per-file-ignores]
 "__init__.py" = [

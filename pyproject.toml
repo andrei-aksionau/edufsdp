@@ -27,7 +27,7 @@ dev = [
 timeout = 30
 markers = ["""
 multi_rank(world_size=2): run a test across multiple CPU processes \
-via torch.multiprocessing.spawn",
+via torch.multiprocessing.spawn,
 """]
 filterwarnings = ["ignore::FutureWarning", "ignore:Failed to initialize NumPy"]
 

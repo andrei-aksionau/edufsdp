@@ -13,6 +13,7 @@ import argparse
 import os
 import platform
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import torch
@@ -41,7 +42,6 @@ def init_distributed() -> None:
     preventing IPv6 DNS resolution warnings and connection timeouts. Sets a rank-indexed
     seed for reproducible local data generation.
     """
-
     os.environ["MASTER_ADDR"] = os.environ.get("MASTER_ADDR", "127.0.0.1")
     os.environ["MASTER_PORT"] = os.environ.get("MASTER_PORT", "29500")
 
@@ -73,9 +73,7 @@ def log_hooks_enabled(enabled: bool = True) -> Generator[None]:
 
     Yields:
         None
-
     """
-
     if not enabled:
         yield
         return
@@ -87,26 +85,6 @@ def log_hooks_enabled(enabled: bool = True) -> Generator[None]:
     finally:
         logger.log_hooks = previous_state
         logger.reset_layer_prefix()
-
-
-def reduce_loss(local_loss: Tensor) -> float:
-    """
-    Computes mean loss across all distributed process ranks for logging.
-
-    Performs an `all_reduce` sum across all process group ranks using `dist.ReduceOp.SUM`,
-    scales the resulting scalar tensor by the world size, and returns the reduced Python float.
-
-    Args:
-        local_loss: Local scalar loss tensor calculated on the current rank.
-
-    Returns:
-        Mean global loss calculated across all ranks.
-
-    """
-    loss_tensor = local_loss.detach().clone()
-    dist.all_reduce(loss_tensor, op=dist.ReduceOp.SUM)
-    loss_tensor /= dist.get_world_size()
-    return loss_tensor.item()
 
 
 def run_train_step(
@@ -130,9 +108,7 @@ def run_train_step(
         criterion: Loss criterion used to calculate local loss.
         inputs: Rank-local micro-batch input tensor.
         targets: Rank-local target tensor corresponding to local inputs.
-
     """
-
     logger.reset_layer_prefix()
 
     # 1. Forward Pass
@@ -142,13 +118,17 @@ def run_train_step(
     outputs = model(inputs)
     local_loss = criterion(outputs, targets)
 
-    # 2. Report Local & Reduced Global Loss
-    global_loss = reduce_loss(local_loss)
+    # 2. Calculate global average loss
+    global_loss = local_loss.detach().clone()
+    dist.all_reduce(global_loss, op=dist.ReduceOp.SUM)
+    global_loss /= dist.get_world_size()
+
+    # 3. Report Local & Reduced Global Loss
     logger.log_header(f"Loss Values on step {step_idx}")
     logger.log_ordered(f"Local Loss: {local_loss.item():.4f}")
     logger.log_rank0(f"- Global Average Loss: {global_loss:.4f}")
 
-    # 3. Backward Pass
+    # 4. Backward Pass
     if logger.log_hooks:
         logger.reset_layer_prefix()
         logger.log_section_header("Backward Pass")
@@ -156,7 +136,7 @@ def run_train_step(
     optimizer.zero_grad()
     local_loss.backward()
 
-    # 4. Optimizer Step
+    # 5. Optimizer Step
     optimizer.step()
 
 
@@ -167,7 +147,6 @@ def verify_state_dict_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) ->
     Args:
         fsdp_model: Trained FSDP model instance.
         device_mesh: Distributed device mesh layout.
-
     """
     logger.log_section_header("State Dict Loading Verification")
 
@@ -214,15 +193,21 @@ def verify_state_dict_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) ->
         logger.log_rank0("\n")
 
 
-def parse_args() -> argparse.Namespace:
+@dataclass
+class TrainingConfig:
+    num_iterations: int
+    log_memory_transition: bool
+    log_memory_transition_first_iter_only: bool
+    log_checkpoint_memory_transition: bool
+
+
+def parse_args() -> TrainingConfig:
     """
-    Configures command-line options for training steps and visual memory logs.
+    Configures command-line options for training steps and memory visualization logs.
 
     Returns:
         Structured namespace containing parsed CLI options and runtime flags.
-
     """
-
     parser = argparse.ArgumentParser(description="Educational FSDP Training Script")
     parser.add_argument(
         "--num-iterations",
@@ -231,24 +216,35 @@ def parse_args() -> argparse.Namespace:
         help="Number of training iterations to run.",
     )
     parser.add_argument(
-        "--show-memory-training",
+        "--log-memory-transition",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Enable/disable ASCII memory state logs during training passes.",
+        help="Enable or disable ASCII memory transition logs during training passes.",
     )
     parser.add_argument(
-        "--memory-first-iter-only",
+        "--log-memory-transition-first-iter-only",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="If True and num_iterations > 1, show memory logs only during the first step.",
+        help=(
+            "If True and num_iterations > 1, "
+            "restrict memory logs to the first training iteration."
+        ),
     )
     parser.add_argument(
-        "--show-memory-checkpoint",
+        "--log-checkpoint-memory-transition",
         action=argparse.BooleanOptionalAction,
         default=False,
-        help="Enable/disable ASCII memory state logs during state dict gathering.",
+        help="Enable or disable ASCII memory transition logs during state dict gathering.",
     )
-    return parser.parse_args()
+
+    parsed = parser.parse_args()
+
+    return TrainingConfig(
+        num_iterations=parsed.num_iterations,
+        log_memory_transition=parsed.log_memory_transition,
+        log_memory_transition_first_iter_only=parsed.log_memory_transition_first_iter_only,
+        log_checkpoint_memory_transition=parsed.log_checkpoint_memory_transition,
+    )
 
 
 def main() -> None:
@@ -260,7 +256,6 @@ def main() -> None:
     Parallelism, executes the training step loop with selective ASCII memory logging,
     and validates state dict saving/loading.
     """
-
     args = parse_args()
 
     init_distributed()
@@ -279,13 +274,13 @@ def main() -> None:
 
     # 2. Prepare a distinct shard of the total batch for each rank (Data Parallelism)
     batch_per_rank = 2
+    data_generator = torch.Generator().manual_seed(42)
     global_inputs = torch.randn(
-        world_size * batch_per_rank, model.input_dim, requires_grad=True
+        world_size * batch_per_rank, model.input_dim, generator=data_generator
     )
-    # Why 'requires_grad=True': a full_backward_hook fires only after the input gradient
-    # is computed, and without a gradient on the input it fires early, resulting in premature
-    # weights freeing. (This path was chosen for simplicity of this educational repo.)
-    global_targets = torch.randn(world_size * batch_per_rank, model.output_dim)
+    global_targets = torch.randn(
+        world_size * batch_per_rank, model.output_dim, generator=data_generator
+    )
 
     # 3. Slice rank-local input batch
     start_idx = rank * batch_per_rank
@@ -296,15 +291,15 @@ def main() -> None:
     # 4. Execute training loop with selective memory logging
     for iter_idx in range(args.num_iterations):
         # Determine whether memory hooks should log during this iteration
-        should_log = args.show_memory_training and (
-            not args.memory_first_iter_only or iter_idx == 0
+        should_log = args.log_memory_transition and (
+            not args.log_memory_transition_first_iter_only or iter_idx == 0
         )
 
         with log_hooks_enabled(enabled=should_log):
             run_train_step(iter_idx, model, optimizer, criterion, local_inputs, local_targets)
 
     # 5. Check state dict saving/loading with configurable hook visualization
-    with log_hooks_enabled(args.show_memory_checkpoint):
+    with log_hooks_enabled(args.log_checkpoint_memory_transition):
         verify_state_dict_loading(model, mesh)
 
     dist.destroy_process_group()

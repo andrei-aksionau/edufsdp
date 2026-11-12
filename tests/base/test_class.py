@@ -28,7 +28,6 @@ class SimpleMLP(nn.Module):
     Attributes:
         fc1: First linear projection without bias (in_features=16, out_features=4).
         fc2: Second linear projection without bias (in_features=4, out_features=8).
-
     """
 
     def __init__(self) -> None:
@@ -54,7 +53,6 @@ class SimpleMLP(nn.Module):
 
         Returns:
             Output tensor of shape (batch_size, 8).
-
         """
         return self.fc2(self.fc1(x))
 
@@ -79,7 +77,7 @@ class DistributedTestBase:
         self.batch_size = 2
         torch.manual_seed(42 + self.rank)
         self.dummy_input = torch.randn(
-            self.batch_size, self.base_model.input_dim, device=self.device, requires_grad=True
+            self.batch_size, self.base_model.input_dim, device=self.device
         )
         self.dummy_target = torch.randn(
             self.batch_size, self.base_model.output_dim, device=self.device
@@ -108,7 +106,6 @@ class DistributedTestBase:
         Recursively discovers and fully_shards all submodules owning parameters
         dynamically.
         """
-
         model = copy.deepcopy(self.base_model)
 
         for _, submodule in model.named_modules():
