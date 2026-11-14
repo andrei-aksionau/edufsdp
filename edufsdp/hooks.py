@@ -34,8 +34,8 @@ Provides:
  ┌───────────────────────────────┐         ┌───────────────────────────┐
  │ BackwardPreHook               │  ---->  │ FSDPAllGatherFunction     │ ──────┐
  │  • Intercepts backward        │         │  • Re-executes All-Gather │       │
- │  • Triggers gathering         │         │    for gradient calc      │       │
- │    via FSDPAllGatherFunction  │         │                           │       │
+ │  • Triggers gathering         │         │    for gradient           │       │
+ │    via FSDPAllGatherFunction  │         │    calculation            │       │
  └───────────────────────────────┘         └───────────────────────────┘       │
                                                                                │
                                                                                │
