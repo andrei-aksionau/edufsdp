@@ -6,19 +6,19 @@ The *edufsdp* codebase is structured to maintain a direct, transparent correspon
 
 The core logic is partitioned into four primary modules:
 
-* **sharded_parameter.py** — Manages local weight slices, global shape abstractions, and state transitions.
-* **hooks.py** — Implements the custom autograd communication function and lifecycle hooks.
-* **fsdp.py** — Orchestrates composable block wrapping via `fully_shard` and hook registration.
-* **state_dict.py** — Handles checkpoint conversion between local shards and full global tensors.
+* **sharded_parameter.py** — Maps the FSDP v2 parameter-storage decoupling model. It manages rank-local weight shards alongside a resizable global buffer, handling state transitions between sharded and unsharded representations.
+* **hooks.py** — Implements the just-in-time communication primitives required by FSDP v2 (All-Gather during forward/backward pre-hooks and Reduce-Scatter via custom autograd functions), orchestrating lifecycle timing.
+* **fsdp.py** — Provides the composable block-level wrapping API (`fully_shard`), mapping the FSDP v2 model-parallel design where arbitrary submodules can be wrapped independently.
+* **state_dict.py** — Implements distributed checkpointing and state dictionary conversion, supporting both rank-local sharded states and global un-sharded exports.
 
 <br>
 
 ## 1. Explicit Parameter Management
 
-The foundational building block of the library is the 'ShardedParameter' class (`sharded_parameter.py`). In a sharded environment, each rank only owns a fraction of any given parameter tensor.
+A wrapped FSDP model acts as a transparent drop-in replacement for a standard PyTorch model. To any external caller or standard training loop, the module looks and behaves exactly like a conventional nn.Module. All complex sharding, communication, and memory management logic is completely encapsulated within 'ShardedParameter' (`sharded_parameter.py`) and its associated hooks, allowing standard forward passes and optimizer updates to run unmodified.
 
-* **Local vs. Global Representation:** 'ShardedParameter' wraps the local weight slice residing on the current rank while keeping track of the tensor's global shape and sharding dimension via PyTorch's native DTensor abstractions.
-* **Lazy Buffer Pattern & Storage Management:** Instead of dynamic allocations, 'ShardedParameter' maintains an internal buffer matching the global parameter shape. It encapsulates all resizing logic, hiding it from hooks. By utilizing buffer resizing down to zero, it ensures physical memory is immediately reclaimed when sharded while keeping the Python tensor shell (with all the metadata) intact for autograd strong-reference compatibility.
+* **Distributed Parameter Wrappers:** 'ShardedParameter' encapsulates the rank-local weight shard while maintaining awareness of the global tensor shape and sharding topology through native PyTorch DTensor abstractions.
+* **Persistent Buffer & Storage Management:** PyTorch's autograd engine maintains strong references to tensors used during the forward pass, preventing standard garbage collection from freeing memory when unlinking attributes. To solve this, 'ShardedParameter' maintains a persistent buffer created at full global size to satisfy autograd's structural requirements. Storage is dynamically managed via low-level resizing: when sharded, the buffer storage is resized to zero ('resize_(0)') to instantly reclaim physical GPU memory while keeping the Python tensor shell and metadata intact. Conversely, right before an All-Gather communication step, the buffer storage is resized back up to its full global dimensions to accommodate incoming full-size weights.
 * **State Manipulation Methods:** 'ShardedParameter' exposes two key state manipulation methods that control whether a module sees its local shard or the fully gathered weight:
   * *set_unsharded(full_tensor)*: Mounts the gathered full parameter tensor directly onto the module's attribute dictionary (module.\_\_dict\_\_), allowing normal forward/backward matrix multiplication.
   * *set_sharded()*: Restores the attribute pointer back to the sharded DTensor and clears the buffer storage back to zero size, freeing memory immediately.
@@ -33,8 +33,8 @@ Distributed training requires precise synchronization timed directly to the exec
 
 `FSDPAllGatherFunction` inherits from `torch.autograd.Function`, integrating distributed communication natively into PyTorch's autograd graph:
 
-* **Forward Pass:** Takes the local shard and runs `dist.all_gather_single` to collect from all ranks the full size tensor using the Gloo backend and copy it into the pre-allocated `_unsharded_buffer`.
-* **Backward Pass:** Intercepts incoming global gradients, runs `dist.reduce_scatter_single` to aggregate and shard gradients across the device mesh. It then normalizes the sharded gradient by dividing by the world size ($N$), completing the Reduce-Scatter operation.
+* **Forward Pass:** Because each rank only holds a 1/N local weight shard, a standard forward matrix multiplication cannot execute. To solve this, an All-Gather collective (`dist.all_gather_single`) is executed across all ranks using the Gloo backend. Each rank contributes its local shard, and all ranks coordinate to reconstruct the complete, global weight matrix inside a pre-allocated buffer. This temporarily restores the full parameter tensor so the module can compute activations for its local input batch.
+* **Backward Pass:** Since full-size weight matrices were used during the forward pass, every rank computes a full-size gradient tensor with respect to its local input batch. These full gradients must first be globally reduced (summed) across all ranks so that every rank shares identical global gradient information. Then, because each rank only owns a rank-local weight shard, a `dist.reduce_scatter_single` operation is executed to scatter and shard the gradient, leaving each rank with only the gradient slice corresponding to its weight shard, scaled by the world size ($N$).
 
 ### Lifecycle Hooks
 
@@ -51,7 +51,7 @@ Four discrete hook classes manage parameter lifecycles by leveraging the paramet
 
 A composable block-level API (`fsdp.py`) centered around the `fully_shard` function controls the granularity of module wrapping across the architecture. Grouping multiple layers into a single wrapped block reduces the number of individual all-gather kernel launches and communication latency at the cost of increased peak memory consumption:
 
-* **Composable Block Wrapping:** The user explicitly calls `fully_shard(submodule, device_mesh)` on individual layers or blocks (such as transformer blocks or linear layers).
+* **Composable Block Wrapping:** The user explicitly calls `fully_shard(submodule, device_mesh)` on individual layers or blocks (such as linear layers or transformer blocks).
 * **Parameter Conversion:** Standard 'torch.nn.Parameter' instances are converted into managed 'ShardedParameter' objects.
 * **Local Hook Binding:** Pre- and post-forward/backward hooks from `hooks.py` are attached directly to the specified submodule, ensuring that parameter gathering and gradient reduction occur strictly around that module's compute scope.
 
