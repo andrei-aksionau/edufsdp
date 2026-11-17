@@ -146,7 +146,7 @@ class StateDictManager:
 
                 sharded_incoming = distribute_tensor(
                     full_tensor,
-                    device_mesh=parameter.device_mesh,
+                    device_mesh=parameter.dtensor.device_mesh,
                     placements=parameter.dtensor.placements,
                 )
                 parameter.dtensor.copy_(sharded_incoming)

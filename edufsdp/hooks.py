@@ -104,7 +104,7 @@ class FSDPAllGatherFunction(torch.autograd.Function):
             dist.all_gather_single(
                 unsharded_buffer,
                 local_parameter.contiguous(),
-                group=sharded_parameter.device_mesh.get_group(),
+                group=sharded_parameter.dtensor.device_mesh.get_group(),
             )
 
         logger.log_transition(
@@ -144,11 +144,11 @@ class FSDPAllGatherFunction(torch.autograd.Function):
             sharded_grad,
             grad_output.contiguous(),
             op=dist.ReduceOp.SUM,
-            group=parameter.device_mesh.get_group(),
+            group=parameter.dtensor.device_mesh.get_group(),
         )
 
         # Each rank's loss was a mean over its own batch, so average the summed gradients
-        sharded_grad /= parameter.device_mesh.size()
+        sharded_grad /= parameter.dtensor.device_mesh.size()
 
         logger.log_transition(
             event_name="reduce_scatter",

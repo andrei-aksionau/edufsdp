@@ -35,7 +35,7 @@ class TestShardedParameter(DistributedTestBase):
         assert sharded_parameter.fqn == fqn
         assert sharded_parameter.parameter_name == "weight"
         assert sharded_parameter.module is layer
-        assert sharded_parameter.device_mesh is self.device_mesh
+        assert sharded_parameter.dtensor.device_mesh is self.device_mesh
 
         # Verify attribute was replaced with DTensor nn.Parameter
         assert isinstance(layer.weight, nn.Parameter)

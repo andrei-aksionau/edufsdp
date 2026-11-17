@@ -66,7 +66,6 @@ class ShardedParameter:
         """
         self.fqn = fqn
         self.module = module
-        self.device_mesh = device_mesh
 
         # ---------------------------------------------------------------------
         # 1. Distribute raw tensor memory into a DTensor parameter
@@ -79,7 +78,7 @@ class ShardedParameter:
         with torch.no_grad():
             sharded_dtensor = distribute_tensor(
                 parameter.data,
-                device_mesh=self.device_mesh,
+                device_mesh=device_mesh,
                 placements=[Shard(dim=0)],
             )
             self.dtensor: DTensor = cast(
