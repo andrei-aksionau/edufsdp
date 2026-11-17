@@ -109,9 +109,9 @@ def _collect_subtree_parameters(
             fqn = f"{prefix}.{param_name}" if prefix else param_name
 
             sharded_parameter = ShardedParameter(
-                fqn=fqn,
                 module=submodule,
                 parameter=parameter,
+                fqn=fqn,
                 device_mesh=device_mesh,
             )
             sharded_parameters[fqn] = sharded_parameter

@@ -50,22 +50,22 @@ class ShardedParameter:
 
     def __init__(
         self,
-        fqn: str,
         module: nn.Module,
         parameter: nn.Parameter,
+        fqn: str,
         device_mesh: DeviceMesh,
     ) -> None:
         """
         Initializes parameter sharding state and installs the sharded DTensor onto the module.
 
         Args:
-            fqn: Fully qualified parameter name (e.g., 'layer1.weight').
             module: Parent PyTorch module owning this parameter.
             parameter: Unsharded source parameter to split across ranks.
+            fqn: Fully qualified parameter name (e.g., 'layer1.weight').
             device_mesh: PyTorch DeviceMesh defining rank layout.
         """
-        self.fqn = fqn
         self.module = module
+        self.fqn = fqn
 
         # ---------------------------------------------------------------------
         # 1. Distribute raw tensor memory into a DTensor parameter
