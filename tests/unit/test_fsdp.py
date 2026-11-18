@@ -14,11 +14,11 @@ class SubBlock(nn.Module):
 
     def __init__(self, in_dim: int, hidden_dim: int, out_dim: int) -> None:
         super().__init__()
-        self.fc1 = nn.Linear(in_dim, hidden_dim, bias=False)
-        self.fc2 = nn.Linear(hidden_dim, out_dim, bias=False)
+        self.fc_1 = nn.Linear(in_dim, hidden_dim, bias=False)
+        self.fc_2 = nn.Linear(hidden_dim, out_dim, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.fc2(self.fc1(x))
+        return self.fc_2(self.fc_1(x))
 
 
 class ComplexTestModel(nn.Module):
@@ -50,10 +50,10 @@ class TestFSDP(DistributedTestBase):
     def _apply_sharding(self, model: ComplexTestModel, strategy: str) -> None:
         """Helper to apply either layer-level or block-level sharding before root wrap."""
         if strategy == "layer":
-            fully_shard(model.block1.fc1, self.device_mesh)
-            fully_shard(model.block1.fc2, self.device_mesh)
-            fully_shard(model.block2.fc1, self.device_mesh)
-            fully_shard(model.block2.fc2, self.device_mesh)
+            fully_shard(model.block1.fc_1, self.device_mesh)
+            fully_shard(model.block1.fc_2, self.device_mesh)
+            fully_shard(model.block2.fc_1, self.device_mesh)
+            fully_shard(model.block2.fc_2, self.device_mesh)
             fully_shard(model.lm_head, self.device_mesh)
         elif strategy == "block":
             fully_shard(model.block1, self.device_mesh)
@@ -73,10 +73,10 @@ class TestFSDP(DistributedTestBase):
 
         sharded_map = StateDictManager._collect_sharded_parameters(model)
         expected_fqns = {
-            "block1.fc1.weight",
-            "block1.fc2.weight",
-            "block2.fc1.weight",
-            "block2.fc2.weight",
+            "block1.fc_1.weight",
+            "block1.fc_2.weight",
+            "block2.fc_1.weight",
+            "block2.fc_2.weight",
             "lm_head.weight",
         }
         assert set(sharded_map.keys()) == expected_fqns
@@ -88,8 +88,8 @@ class TestFSDP(DistributedTestBase):
     @pytest.mark.parametrize("strategy", ["layer", "block"])
     def test_hook_registration_on_submodules(self, strategy: str) -> None:
         """
-        Verifies that exact FSDP hook instances are registered
-        on owning submodules/containers.
+        Verifies that exact FSDP hook instances are registered on owning
+        submodules/containers.
         """
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
@@ -133,8 +133,8 @@ class TestFSDP(DistributedTestBase):
     @pytest.mark.parametrize("strategy", ["layer", "block"])
     def test_forward_and_backward_execution(self, strategy: str) -> None:
         """
-        Verifies end-to-end forward and backward passes
-        execute correctly across strategies.
+        Verifies end-to-end forward and backward passes execute correctly across
+        strategies.
         """
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
@@ -162,8 +162,8 @@ class TestFSDP(DistributedTestBase):
     @pytest.mark.parametrize("strategy", ["layer", "block"])
     def test_missing_backward_pre_hook_raises_error(self, strategy: str) -> None:
         """
-        Verifies that removing the backward pre-hook causes the backward pass
-        to fail because parameters remain sharded when gradients are computed.
+        Verifies that removing the backward pre-hook causes the backward pass to fail because
+        parameters remain sharded when gradients are computed.
         """
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
@@ -187,14 +187,14 @@ class TestFSDP(DistributedTestBase):
 
     def test_sharded_parameters_fqn_propagation_through_nested_wrappers(self) -> None:
         """
-        Verifies FQN consistency across independently wrapped modules
-        when their parent modules are progressively wrapped.
+        Verifies FQN consistency across independently wrapped modules when their parent modules
+        are progressively wrapped.
         """
         model = ComplexTestModel().to(self.device)
 
         # First, independently shard leaf modules.
-        fully_shard(model.block1.fc1, self.device_mesh)
-        fully_shard(model.block2.fc1, self.device_mesh)
+        fully_shard(model.block1.fc_1, self.device_mesh)
+        fully_shard(model.block2.fc_1, self.device_mesh)
 
         # Next, wrap their parent blocks.
         fully_shard(model.block1, self.device_mesh)
@@ -246,17 +246,17 @@ class TestFSDP(DistributedTestBase):
 
     def test_fully_shard_is_idempotent_for_parameterless_root(self) -> None:
         """
-        Verifies that repeatedly wrapping a root with only independently
-        wrapped descendants doesn't modify their parameter FQNs.
+        Verifies that repeatedly wrapping a root with only independently wrapped descendants
+        doesn't modify their parameter FQNs.
         """
         model = ComplexTestModel().to(self.device)
 
         # Independently wrap every parameter-bearing leaf module.
         leaf_modules = [
-            model.block1.fc1,
-            model.block1.fc2,
-            model.block2.fc1,
-            model.block2.fc2,
+            model.block1.fc_1,
+            model.block1.fc_2,
+            model.block2.fc_1,
+            model.block2.fc_2,
             model.lm_head,
         ]
 

@@ -21,17 +21,17 @@ class SubBlock(nn.Module):
 
     def __init__(self, in_dim: int, hidden_dim: int, out_dim: int) -> None:
         super().__init__()
-        self.fc1 = nn.Linear(in_dim, hidden_dim, bias=False)
-        self.fc2 = nn.Linear(hidden_dim, out_dim, bias=False)
+        self.fc_1 = nn.Linear(in_dim, hidden_dim, bias=False)
+        self.fc_2 = nn.Linear(hidden_dim, out_dim, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.fc2(self.fc1(x))
+        return self.fc_2(self.fc_1(x))
 
 
 class ComplexTestModel(nn.Module):
     """
-    Multi-block model with nested submodules for testing different
-    FSDP wrapping strategies.
+    Multi-block model with nested submodules for testing different FSDP wrapping
+    strategies.
     """
 
     def __init__(self) -> None:
@@ -53,8 +53,8 @@ class ComplexTestModel(nn.Module):
 @pytest.mark.multi_rank
 class TestStateDictManager1(DistributedTestBase):
     """
-    Test suite for StateDictManager handling local shards, full checkpoints,
-    parameter isolation, and collection across wrapping strategies.
+    Test suite for StateDictManager handling local shards, full checkpoints, parameter
+    isolation, and collection across wrapping strategies.
     """
 
     def setup_method(self, method: Any) -> None:
@@ -76,10 +76,10 @@ class TestStateDictManager1(DistributedTestBase):
     def _apply_sharding(self, model: ComplexTestModel, strategy: str) -> None:
         """Helper to apply either layer-level or block-level sharding before root wrap."""
         if strategy == "layer":
-            fully_shard(model.block1.fc1, self.device_mesh)
-            fully_shard(model.block1.fc2, self.device_mesh)
-            fully_shard(model.block2.fc1, self.device_mesh)
-            fully_shard(model.block2.fc2, self.device_mesh)
+            fully_shard(model.block1.fc_1, self.device_mesh)
+            fully_shard(model.block1.fc_2, self.device_mesh)
+            fully_shard(model.block2.fc_1, self.device_mesh)
+            fully_shard(model.block2.fc_2, self.device_mesh)
             fully_shard(model.lm_head, self.device_mesh)
         elif strategy == "block":
             fully_shard(model.block1, self.device_mesh)
@@ -102,8 +102,8 @@ class TestStateDictManager1(DistributedTestBase):
     @pytest.mark.parametrize("strategy", ["layer", "block"])
     def test_get_state_dict_local_format(self, strategy: str) -> None:
         """
-        Verifies extraction of Local state dict returns
-        rank-local shard shapes and values.
+        Verifies extraction of Local state dict returns rank-local shard shapes and
+        values.
         """
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
@@ -124,8 +124,8 @@ class TestStateDictManager1(DistributedTestBase):
     @pytest.mark.parametrize("strategy", ["layer", "block"])
     def test_get_state_dict_full_format_matches_baseline(self, strategy: str) -> None:
         """
-        Verifies extraction of Full state dict consolidates global tensors matching
-        the unsharded baseline.
+        Verifies extraction of Full state dict consolidates global tensors matching the
+        unsharded baseline.
         """
         torch.manual_seed(42)
         base_model = ComplexTestModel().to(self.device)
@@ -150,8 +150,8 @@ class TestStateDictManager1(DistributedTestBase):
         self, strategy: str
     ) -> None:
         """
-        Verifies that extracting a Full state dict gathers tensors during extraction
-        but leaves parameters sharded.
+        Verifies that extracting a Full state dict gathers tensors during extraction but leaves
+        parameters sharded.
         """
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)
@@ -191,8 +191,8 @@ class TestStateDictManager1(DistributedTestBase):
     @pytest.mark.parametrize("strategy", ["layer", "block"])
     def test_load_state_dict_full_format(self, strategy: str) -> None:
         """
-        Verifies reloading Full format state dict correctly redistributes
-        global tensors across ranks.
+        Verifies reloading Full format state dict correctly redistributes global tensors across
+        ranks.
         """
         model_src = ComplexTestModel().to(self.device)
         self._apply_sharding(model_src, strategy)
@@ -213,8 +213,8 @@ class TestStateDictManager1(DistributedTestBase):
         self, strategy: str
     ) -> None:
         """
-        Verifies KeyError is raised when incoming state dict contains
-        a parameter not present in module.
+        Verifies KeyError is raised when incoming state dict contains a parameter not present
+        in module.
         """
         model = ComplexTestModel().to(self.device)
         self._apply_sharding(model, strategy)

@@ -1,7 +1,4 @@
-"""
-Unit tests for edufsdp.sharded_parameter covering
-DTensor sharding and state transitions.
-"""
+"""Unit tests for edufsdp.sharded_parameter covering DTensor sharding and state transitions."""
 
 import pytest
 import torch
@@ -22,8 +19,8 @@ class TestShardedParameter(DistributedTestBase):
 
     def test_sharded_parameter_initialization(self) -> None:
         """Verifies initial DTensor conversion, local shard shapes, and module assignment."""
-        layer = self.base_model.fc1
-        fqn = "fc1.weight"
+        layer = self.base_model.fc_1
+        fqn = "fc_1.weight"
 
         sharded_parameter = ShardedParameter(
             fqn=fqn,
@@ -49,11 +46,11 @@ class TestShardedParameter(DistributedTestBase):
 
     def test_local_shard_tensor_values_match_global_chunk(self) -> None:
         """
-        Verifies that local DTensor shard data matches
-        the expected slice of the original weight.
+        Verifies that local DTensor shard data matches the expected slice of the original
+        weight.
         """
-        layer = self.base_model.fc1
-        fqn = "fc1.weight"
+        layer = self.base_model.fc_1
+        fqn = "fc_1.weight"
         original_data = layer.weight.data.clone()
 
         sharded_parameter = ShardedParameter(
@@ -73,8 +70,8 @@ class TestShardedParameter(DistributedTestBase):
 
     def test_sharded_parameter_fqn_getter_setter(self) -> None:
         """Verifies that updating the fqn property automatically updates parameter_name."""
-        layer = self.base_model.fc1
-        initial_fqn = "fc1.weight"
+        layer = self.base_model.fc_1
+        initial_fqn = "fc_1.weight"
 
         sharded_parameter = ShardedParameter(
             fqn=initial_fqn,
@@ -87,7 +84,7 @@ class TestShardedParameter(DistributedTestBase):
         assert sharded_parameter.parameter_name == "weight"
 
         # Update fqn to a hierarchical path (simulating parent/block sharding)
-        new_fqn = "transformer_block_1.fc1.weight"
+        new_fqn = "transformer_block_1.fc_1.weight"
         sharded_parameter.fqn = new_fqn
 
         assert sharded_parameter.fqn == new_fqn
@@ -95,11 +92,11 @@ class TestShardedParameter(DistributedTestBase):
 
     def test_unsharded_buffer_lazy_allocation(self) -> None:
         """
-        Verifies that accessing unsharded_buffer lazily allocates storage
-        only when empty, preserving tensor metadata shell.
+        Verifies that accessing unsharded_buffer lazily allocates storage only when empty,
+        preserving tensor metadata shell.
         """
-        layer = self.base_model.fc1
-        fqn = "fc1.weight"
+        layer = self.base_model.fc_1
+        fqn = "fc_1.weight"
         global_shape, _ = self.expected_shapes[fqn]
 
         sharded_parameter = ShardedParameter(
@@ -123,11 +120,11 @@ class TestShardedParameter(DistributedTestBase):
 
     def test_sharded_parameter_shape_and_gathered_properties(self) -> None:
         """
-        Verifies that shape and is_gathered properties correctly reflect
-        the transition between sharded and unsharded states.
+        Verifies that shape and is_gathered properties correctly reflect the transition between
+        sharded and unsharded states.
         """
-        layer = self.base_model.fc1
-        fqn = "fc1.weight"
+        layer = self.base_model.fc_1
+        fqn = "fc_1.weight"
         global_shape, local_shape = self.expected_shapes[fqn]
 
         sharded_parameter = ShardedParameter(
@@ -154,11 +151,11 @@ class TestShardedParameter(DistributedTestBase):
 
     def test_set_unsharded_and_set_sharded_lifecycle(self) -> None:
         """
-        Verifies symmetric transition between sharded DTensor
-        and full unsharded tensor state.
+        Verifies symmetric transition between sharded DTensor and full unsharded tensor
+        state.
         """
-        layer = self.base_model.fc1
-        fqn = "fc1.weight"
+        layer = self.base_model.fc_1
+        fqn = "fc_1.weight"
         global_shape, local_shape = self.expected_shapes[fqn]
 
         sharded_parameter = ShardedParameter(

@@ -106,7 +106,7 @@ class TestRankLoggerUnit:
             # Should execute successfully without throwing exceptions
             rank_logger.log_transition(
                 event_name="all_gather",
-                parameter_name="fc1.weight",
+                parameter_name="fc_1.weight",
                 shape_before=torch.Size([2, 16]),
                 shape_after=torch.Size([4, 16]),
             )

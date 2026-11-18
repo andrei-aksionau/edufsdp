@@ -26,8 +26,8 @@ class SimpleMLP(nn.Module):
     Simple multi-layer perceptron module for testing sharding and hooks.
 
     Attributes:
-        fc1: First linear projection without bias (in_features=16, out_features=4).
-        fc2: Second linear projection without bias (in_features=4, out_features=8).
+        fc_1: First linear projection without bias (in_features=16, out_features=4).
+        fc_2: Second linear projection without bias (in_features=4, out_features=8).
     """
 
     def __init__(self) -> None:
@@ -40,9 +40,9 @@ class SimpleMLP(nn.Module):
         self.output_dim = 8
 
         # Weight shape: (out_features=4, in_features=16) -> Shard shape on 2 ranks: (2, 16)
-        self.fc1 = nn.Linear(self.input_dim, self.hidden_dim, bias=False)
+        self.fc_1 = nn.Linear(self.input_dim, self.hidden_dim, bias=False)
         # Weight shape: (out_features=8, in_features=4) -> Shard shape on 2 ranks: (4, 4)
-        self.fc2 = nn.Linear(self.hidden_dim, self.output_dim, bias=False)
+        self.fc_2 = nn.Linear(self.hidden_dim, self.output_dim, bias=False)
 
     def forward(self, x: Tensor) -> Tensor:
         """
@@ -54,7 +54,7 @@ class SimpleMLP(nn.Module):
         Returns:
             Output tensor of shape (batch_size, 8).
         """
-        return self.fc2(self.fc1(x))
+        return self.fc_2(self.fc_1(x))
 
 
 class DistributedTestBase:
@@ -85,11 +85,11 @@ class DistributedTestBase:
 
         # Target expected tensor shapes: parameter_name -> (global_shape, local_shard_shape)
         self.expected_shapes = {
-            "fc1.weight": (
+            "fc_1.weight": (
                 torch.Size([4, 16]),
                 torch.Size([4 // self.world_size, 16]),
             ),
-            "fc2.weight": (
+            "fc_2.weight": (
                 torch.Size([8, 4]),
                 torch.Size([8 // self.world_size, 4]),
             ),
