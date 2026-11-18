@@ -2,7 +2,13 @@
 
 <br>
 
-This document provides a practical guide for setting up the edufsdp development environment, running the distributed test suite and demonstration scripts, leveraging pre-configured VS Code debugging tools, wrapping custom modules, and troubleshooting multi-rank CPU execution hurdles.
+This document provides a practical guide covering:
+
+* Setting up the *edufsdp* development environment.
+* Running the distributed test suite and demonstration scripts.
+* Leveraging pre-configured VS Code debugging tools.
+* Wrapping custom modules.
+* Troubleshooting multi-rank CPU execution hurdles.
 
 <br>
 
@@ -90,7 +96,8 @@ Rank 2 │ layer1.bias          │ free            │ Shard: [█████�
 
 The repository includes a comprehensive automated test suite combining **unit tests** (isolating individual components like parameter wrapper, hooks, logging, and state dict managers) and **integration tests** (validating end-to-end distributed lifecycles, DTensor placements, optimizer state sharding, and loss convergence).
 
-Thanks to a custom pytest hook in `conftest.py`, tests marked with `@pytest.mark.multi_rank` automatically spawn isolated CPU worker processes via 'torch.multiprocessing.spawn'. In other words, you can execute the entire test suite using standard pytest invocations:
+Thanks to a custom pytest hook in `conftest.py`, tests marked with `@pytest.mark.multi_rank` automatically spawn isolated CPU worker processes via 'torch.multiprocessing.spawn'. <br>
+In other words, you can execute the entire test suite using standard pytest invocations:
 
 ```bash
 pytest
@@ -118,9 +125,7 @@ It provides out-of-the-box configurations for launching single files as well as 
 
 Wrapping models in *edufsdp* is designed to be as simple and familiar as PyTorch's native FSDP interface.
 
-### Basic Wrapping Example
-
-```python verify_via_test
+```python verify_via_test world_size=2
 import torch
 import torch.nn as nn
 from torch import distributed as dist
@@ -143,11 +148,11 @@ class SimpleMLP(nn.Module):
         output_dim: int = 10,
     ):
         super().__init__()
-        self.fc1 = nn.Linear(input_dim, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, output_dim)
+        self.fc_1 = nn.Linear(input_dim, hidden_dim)
+        self.fc_2 = nn.Linear(hidden_dim, output_dim)
 
     def forward(self, x: torch.Tensor):
-        return self.fc2(torch.relu(self.fc1(x)))
+        return self.fc_2(torch.relu(self.fc_1(x)))
 
 
 model = SimpleMLP().to(device_mesh.device_type)
@@ -156,8 +161,8 @@ model = SimpleMLP().to(device_mesh.device_type)
 # Wrap the whole model so all layers are all-gathered at once
 fully_shard(model, device_mesh=device_mesh)
 # Or do it more granularly, so only a layer under calculation is all-gathered
-fully_shard(model.fc1, device_mesh=device_mesh)
-fully_shard(model.fc2, device_mesh=device_mesh)
+fully_shard(model.fc_1, device_mesh=device_mesh)
+fully_shard(model.fc_2, device_mesh=device_mesh)
 fully_shard(model, device_mesh=device_mesh)
 
 ```
@@ -193,4 +198,4 @@ export GLOO_SOCKET_IFNAME=lo0  # Or lo on Linux
 
 * **Symptom:** '*AttributeError: NoneType object has no attribute to_local'* during the optimizer step.
 * **Cause:** The backward pass was executed on a tensor that did not require gradients, or 'backward()' was not called on the loss output.
-* **Solution:** Ensure **requires_grad=True** is set on input tensors and that **loss.backward()** is called before invoking **optimizer.step()**.
+* **Solution:** Ensure that **loss.backward()** is called before invoking **optimizer.step()**.

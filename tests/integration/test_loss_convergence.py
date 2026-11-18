@@ -1,6 +1,6 @@
 """
-Integration tests verifying model training convergence,
-numerical stability, and parameter updates.
+Integration tests verifying model training convergence, numerical stability, and
+parameter updates.
 """
 
 from typing import Any
@@ -17,8 +17,8 @@ from tests.base.test_class import DistributedTestBase, FSDPType
 @pytest.mark.multi_rank
 class TestCustomTrainingConvergence(DistributedTestBase):
     """
-    Test suite covering end-to-end training execution, loss reduction,
-    and weight updates with custom FSDP.
+    Test suite covering end-to-end training execution, loss reduction, and weight updates with
+    custom FSDP.
     """
 
     def setup_method(self, method: Any) -> None:
@@ -33,8 +33,8 @@ class TestCustomTrainingConvergence(DistributedTestBase):
 
     def test_loss_decreases_across_steps(self) -> None:
         """
-        Verifies that training loss successfully decreases over
-        a multi-step optimization loop with a negative downward trend.
+        Verifies that training loss successfully decreases over a multi-step optimization loop
+        with a negative downward trend.
         """
         losses = []
 
@@ -121,8 +121,8 @@ class TestCustomTrainingConvergence(DistributedTestBase):
 
     def test_gradient_accumulation(self) -> None:
         """
-        Verifies that gradients accumulate correctly across
-        multiple backward passes without resetting.
+        Verifies that gradients accumulate correctly across multiple backward passes without
+        resetting.
         """
         # 1. Run first backward pass and capture baseline gradients
         self.optimizer.zero_grad()

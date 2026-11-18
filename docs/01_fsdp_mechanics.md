@@ -19,9 +19,10 @@ When training deep learning models at scale, GPU memory (or CPU RAM) is consumed
 
 In standard Distributed Data Parallel (DDP), every rank holds an exact, full copy of the model parameters $P$ and optimizer states $O$. Each rank processes a distinct mini-batch of data, computes gradients $G$ locally, and performs an `All-Reduce` operation to average gradients across all ranks before updating parameters.
 
-$$\text{Memory per rank (DDP)} \propto P + G + O + A$$
+$$\text{Memory per rank (DDP)} \propto P + G + O + A_{local}$$
 
-As model sizes grow into billions of parameters, storing full copies of $P$, $G$, and $O$ on every single device becomes mathematically impossible on single accelerators.
+As model sizes grow into billions of parameters, storing full copies of $P$, $G$, and $O$ on every single device becomes mathematically impossible on single accelerators. <br>
+In contrast, local activations ($A_{\text{local}}$) scale down with the number of ranks $N$, because distributing the global batch across more devices reduces the per-rank batch size.
 
 ```text
 DDP Memory Layout Across Ranks:
@@ -33,13 +34,11 @@ DDP Memory Layout Across Ranks:
 
 FSDP eliminates this redundancy by sharding parameters $P$, gradients $G$, and optimizer states $O$ uniformly across all ranks in a distributed process group.
 
-$$\text{Memory per rank (FSDP at rest)} \propto \frac{P}{N} + \frac{G}{N} + \frac{O}{N} + \frac{A}{N}$$
+$$\text{Memory per rank (FSDP at rest)} \propto \frac{P}{N} + \frac{G}{N} + \frac{O}{N} + A_{local}$$
 
 *(where* $N$ *is the total number of ranks)*
 
 Instead of keeping full parameters persistent throughout training, FSDP fetches parameters on-demand right before they are needed for computation and discards them immediately afterward.
-
-Notice that activations $A$ are divided by $N$. In data-parallel training, each rank processes its own distinct slice of the global batch (e.g., a local batch size of 2 out of a global batch size of 16 across 8 ranks). Because the forward pass processes only the local data shard on that rank, the resulting activation tensors residing in memory during forward and backward passes are naturally proportional to $A/N$.
 
 ```text
 FSDP Memory Layout Across Ranks (Resting State):
@@ -93,7 +92,7 @@ The backward pass mirrors the forward pass but introduces gradient synchronizati
 1. **All-Gather Phase**: Since full parameter weights were freed immediately after the forward pass to save memory, they are no longer present on the device. Therefore, an all-gather runs again before the backward pass of each layer to supply the full parameters $P$ needed for gradient calculation.
 2. **Local Gradient Computation:** The layer computes full gradients $G_{full}$ with respect to the input activations and un-sharded parameters.
 3. **Reduce-Scatter Operation:** Instead of keeping full gradients, an explicit `Reduce-Scatter` operation is performed across all ranks:
-   - Gradients are averaged/summed across ranks (`Reduce`).
+   - Gradients are averaged across ranks (`Reduce`).
    - The resulting averaged gradient is chunked into shards, and each rank receives only its assigned gradient shard $G/N$ (`Scatter`).
 4. **Post-Backward Cleanup:** Un-sharded full parameters $P$ and un-sharded gradients $G_{full}$ are freed immediately. Only the local gradient shard $G/N$ remains attached to the local parameter shard $P/N$.
 

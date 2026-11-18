@@ -33,20 +33,13 @@ if TYPE_CHECKING:
 
 
 def init_distributed() -> None:
-    """
-    Initializes default Gloo distributed environment and process group.
-
-    Sets required rendezvous environment variables (`MASTER_ADDR`, `MASTER_PORT`)
-    and configures OS-specific socket interfaces (`GLOO_SOCKET_IFNAME`, `TP_SOCKET_IFNAME`)
-    to force binding to local loopback interfaces on macOS (`lo0`) and Linux (`lo`),
-    preventing IPv6 DNS resolution warnings and connection timeouts. Sets a rank-indexed
-    seed for reproducible local data generation.
-    """
+    """Initializes default Gloo distributed environment and process group."""
     os.environ["MASTER_ADDR"] = os.environ.get("MASTER_ADDR", "127.0.0.1")
     os.environ["MASTER_PORT"] = os.environ.get("MASTER_PORT", "29500")
 
-    current_os = platform.system()
-    if current_os == "Darwin":  # macOS
+    # Force binding to local loopback interfaces on Unix OS, preventing IPv6 DNS resolution
+    # warnings and connection timeouts.
+    if (current_os := platform.system()) == "Darwin":  # macOS
         os.environ["GLOO_SOCKET_IFNAME"] = "lo0"
         os.environ["TP_SOCKET_IFNAME"] = "lo0"
     elif current_os == "Linux":  # Linux / Lightning AI Studio
@@ -57,6 +50,7 @@ def init_distributed() -> None:
 
     if not dist.is_initialized():
         dist.init_process_group(backend="gloo")
+
     # Distinct seed per rank for reproducible rank-local data generation
     torch.manual_seed(42 + dist.get_rank())
 
@@ -97,9 +91,6 @@ def run_train_step(
 ) -> None:
     """
     Executes a single forward and backward training step with optional hook visualization.
-
-    Resets the logger step counter, executes model forward pass, reduces local and global
-    loss values, backpropagates gradients, and updates model parameters using the optimizer.
 
     Args:
         step_idx: Index of the training step.
@@ -163,8 +154,8 @@ def verify_state_dict_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) ->
 
         # Create a new model with random weights, load state_dict into it
         fresh_fsdp_model = MLP()
-        fully_shard(fresh_fsdp_model.layer1, device_mesh)
-        fully_shard(fresh_fsdp_model.layer2, device_mesh)
+        fully_shard(fresh_fsdp_model.layer_1, device_mesh)
+        fully_shard(fresh_fsdp_model.layer_2, device_mesh)
         fully_shard(fresh_fsdp_model, device_mesh)
         StateDictManager.load_state_dict(
             fresh_fsdp_model, original_state_dict, state_dict_type
@@ -240,22 +231,15 @@ def parse_args() -> TrainingConfig:
     parsed = parser.parse_args()
 
     return TrainingConfig(
-        num_iterations=parsed.num_iterations,
-        log_memory_transition=parsed.log_memory_transition,
-        log_memory_transition_first_iter_only=parsed.log_memory_transition_first_iter_only,
-        log_checkpoint_memory_transition=parsed.log_checkpoint_memory_transition,
+        parsed.num_iterations,
+        parsed.log_memory_transition,
+        parsed.log_memory_transition_first_iter_only,
+        parsed.log_checkpoint_memory_transition,
     )
 
 
 def main() -> None:
-    """
-    Main execution entrypoint for the FSDP demonstration script.
-
-    Parses command-line arguments, initializes the Gloo process group and device mesh,
-    instantiates the sharded MLP model, prepares rank-local input shards for Data
-    Parallelism, executes the training step loop with selective ASCII memory logging,
-    and validates state dict saving/loading.
-    """
+    """Main execution entrypoint for the FSDP demonstration script."""
     args = parse_args()
 
     init_distributed()
@@ -266,8 +250,8 @@ def main() -> None:
 
     # 1. Initialize sharded model, optimizer, and loss criterion
     model = MLP()
-    fully_shard(model.layer1, mesh)
-    fully_shard(model.layer2, mesh)
+    fully_shard(model.layer_1, mesh)
+    fully_shard(model.layer_2, mesh)
     fully_shard(model, mesh)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
     criterion = nn.MSELoss()
@@ -288,9 +272,8 @@ def main() -> None:
     local_inputs = global_inputs[start_idx:end_idx]
     local_targets = global_targets[start_idx:end_idx]
 
-    # 4. Execute training loop with selective memory logging
+    # 4. Execute training loop
     for iter_idx in range(args.num_iterations):
-        # Determine whether memory hooks should log during this iteration
         should_log = args.log_memory_transition and (
             not args.log_memory_transition_first_iter_only or iter_idx == 0
         )
