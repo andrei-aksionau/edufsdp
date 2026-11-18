@@ -1,6 +1,6 @@
 # https://docs.astral.sh/ruff/rules/
 
-target-version = "py314"
+target-version = "py315"
 preview = true  # Enables preview rules like DOC
 
 lint.select = [
