@@ -47,10 +47,13 @@ def _init_distributed_environment(rank: int, world_size: int, port: str) -> None
         # On Windows, let Gloo auto-detect the interface
         os.environ.pop("GLOO_SOCKET_IFNAME", None)
 
+    # Extend timeout if debugpy is active
+    if os.environ.get("DEBUGPY_RUNNING") == "true":
+        timeout_seconds = 86400  # 24 hours
+    else:
+        timeout_seconds = int(os.environ.get("DIST_TIMEOUT_SECONDS", 28))
+
     # Initialize PyTorch distributed process group
-    # Fallback to 28 seconds (slightly shorter than pytest timeout that is set to 30 sec) for
-    # normal runs, allow override during debugging
-    timeout_seconds = int(os.environ.get("DIST_TIMEOUT_SECONDS", 28))
     dist.init_process_group(
         backend="gloo",
         rank=rank,
