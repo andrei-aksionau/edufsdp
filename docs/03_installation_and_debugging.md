@@ -14,7 +14,7 @@ This document provides a practical guide covering:
 
 ## 1. Environment Setup & Installation
 
-*edufsdp* relies on modern Python tooling and requires **Python 3.14** and **PyTorch 2.14** to guarantee strict version parity.
+*edufsdp* relies on modern Python tooling and requires **Python 3.15** and **PyTorch 2.15** to guarantee strict version parity.
 
 ### Prerequisites
 

@@ -16,3 +16,6 @@ jobs:
     steps:
       - name: Aggregate Statuses
         uses: wechuli/allcheckspassed@v2
+        with:
+          retries: 15
+          polling_interval: 1
