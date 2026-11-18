@@ -2,7 +2,7 @@
 Core FSDP wrapping and unit orchestration for Educational FSDP.
 
 Provides the primary user-facing entrypoint (`fully_shard`) to wrap PyTorch modules,
-collecting subtree parameters, registering collective module-level pre-hooks, and
+collecting subtree parameters, registering collective module-level pre-/post-hooks, and
 attaching tensor-level hooks for immediate backward gradient-time reclamation.
 
 Execution lifecycle for each submodule:
@@ -77,7 +77,7 @@ def fully_shard(module: nn.Module, device_mesh: DeviceMesh) -> nn.Module:
     if sharded_parameters:
         _register_fsdp_hooks(module, sharded_parameters)
 
-    # Step 3: Normalize absolute fully qualified names (FQNs) across all nested FSDP units.
+    # Step 3: Normalize fully qualified names (FQNs) across all nested FSDP units.
     _normalize_subtree_fqns(module)
 
     return module
@@ -97,7 +97,7 @@ def _collect_subtree_parameters(
         device_mesh: PyTorch DeviceMesh specifying process group layout.
 
     Returns:
-        A dictionary mapping absolute fully qualified names to ShardedParameter instances.
+        A dictionary mapping FQNs to ShardedParameter instances.
     """
     sharded_parameters: dict[str, ShardedParameter] = {}
 

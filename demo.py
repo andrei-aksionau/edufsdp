@@ -163,8 +163,8 @@ def verify_state_dict_loading(fsdp_model: nn.Module, device_mesh: DeviceMesh) ->
 
         # Create a new model with random weights, load state_dict into it
         fresh_fsdp_model = MLP()
-        fully_shard(fresh_fsdp_model.layer1, device_mesh)
-        fully_shard(fresh_fsdp_model.layer2, device_mesh)
+        fully_shard(fresh_fsdp_model.layer_1, device_mesh)
+        fully_shard(fresh_fsdp_model.layer_2, device_mesh)
         fully_shard(fresh_fsdp_model, device_mesh)
         StateDictManager.load_state_dict(
             fresh_fsdp_model, original_state_dict, state_dict_type
@@ -266,8 +266,8 @@ def main() -> None:
 
     # 1. Initialize sharded model, optimizer, and loss criterion
     model = MLP()
-    fully_shard(model.layer1, mesh)
-    fully_shard(model.layer2, mesh)
+    fully_shard(model.layer_1, mesh)
+    fully_shard(model.layer_2, mesh)
     fully_shard(model, mesh)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
     criterion = nn.MSELoss()

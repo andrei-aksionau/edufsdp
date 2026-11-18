@@ -34,11 +34,11 @@ class TestMLP:
         assert model.output_dim == expected_out
 
         # PyTorch linear weights have shape (out_features, in_features)
-        assert model.layer1.weight.shape == torch.Size([expected_hidden, expected_in])
-        assert model.layer1.bias.shape == torch.Size([expected_hidden])
+        assert model.layer_1.weight.shape == torch.Size([expected_hidden, expected_in])
+        assert model.layer_1.bias.shape == torch.Size([expected_hidden])
 
-        assert model.layer2.weight.shape == torch.Size([expected_out, expected_hidden])
-        assert model.layer2.bias.shape == torch.Size([expected_out])
+        assert model.layer_2.weight.shape == torch.Size([expected_out, expected_hidden])
+        assert model.layer_2.bias.shape == torch.Size([expected_out])
 
     def test_mlp_forward_pass_output_shape_and_relu(self) -> None:
         """Verifies output shape correctness and non-linear activation during forward pass."""
@@ -53,7 +53,7 @@ class TestMLP:
         assert output.shape == torch.Size([batch_size, model.output_dim])
 
         # Verify ReLU activation explicitly clamps negative values in intermediate output
-        hidden_before_relu = model.layer1(x)
+        hidden_before_relu = model.layer_1(x)
         hidden_after_relu = model.relu(hidden_before_relu)
         assert torch.all(hidden_after_relu >= 0.0)
 

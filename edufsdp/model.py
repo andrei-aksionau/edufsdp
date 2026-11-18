@@ -1,5 +1,5 @@
 """
-Toy module definitions used for testing and demonstrating Fully Sharded Data Parallel (FSDP).
+Toy model definition used for testing and demonstrating Fully Sharded Data Parallel (FSDP).
 
 This simple Multi-Layer Perceptron (MLP) acts as a clean baseline to observe:
   1. Module tree traversal and parameter sharding (`layer1.weight`, `layer2.weight`, etc.)
@@ -31,9 +31,9 @@ class MLP(nn.Module):
         self.hidden_dim = 4 * world_size
         self.output_dim = 2 * world_size
 
-        self.layer1 = nn.Linear(self.input_dim, self.hidden_dim)
+        self.layer_1 = nn.Linear(self.input_dim, self.hidden_dim)
         self.relu = nn.ReLU()
-        self.layer2 = nn.Linear(self.hidden_dim, self.output_dim)
+        self.layer_2 = nn.Linear(self.hidden_dim, self.output_dim)
 
     def forward(self, x: Tensor) -> Tensor:
         """
@@ -45,6 +45,6 @@ class MLP(nn.Module):
         Returns:
             Output tensor of shape `(batch_size, output_dim)`.
         """
-        x = self.layer1(x)
+        x = self.layer_1(x)
         x = self.relu(x)
-        return self.layer2(x)
+        return self.layer_2(x)

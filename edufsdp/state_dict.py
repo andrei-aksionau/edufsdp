@@ -2,8 +2,8 @@
 State dictionary management for Educational FSDP.
 
 Handles extracting and loading model state dictionaries in two formats:
-1. `Local`: Saves/loads rank-local 1/N parameter tensor shards.
-2. `Full`: Saves/loads consolidated global parameters (unsharded).
+1. `Local`: Retrieves/loads rank-local 1/N parameter tensor shards.
+2. `Full`: Retrieves/loads consolidated global parameters (unsharded).
 """
 
 from enum import Enum
