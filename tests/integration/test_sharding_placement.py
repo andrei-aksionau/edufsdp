@@ -22,11 +22,11 @@ class SubBlock(nn.Module):
 
     def __init__(self, in_dim: int, hidden_dim: int, out_dim: int) -> None:
         super().__init__()
-        self.fc1 = nn.Linear(in_dim, hidden_dim, bias=False)
-        self.fc2 = nn.Linear(hidden_dim, out_dim, bias=False)
+        self.fc_1 = nn.Linear(in_dim, hidden_dim, bias=False)
+        self.fc_2 = nn.Linear(hidden_dim, out_dim, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.fc2(self.fc1(x))
+        return self.fc_2(self.fc_1(x))
 
 
 class ComplexTestModel(nn.Module):
@@ -76,10 +76,10 @@ class TestShardingPlacement(DistributedTestBase):
     def _apply_sharding(self, model: ComplexTestModel, strategy: str) -> None:
         """Helper to apply either layer-level or block-level sharding before root wrap."""
         if strategy == "layer":
-            fully_shard(model.block1.fc1, self.device_mesh)
-            fully_shard(model.block1.fc2, self.device_mesh)
-            fully_shard(model.block2.fc1, self.device_mesh)
-            fully_shard(model.block2.fc2, self.device_mesh)
+            fully_shard(model.block1.fc_1, self.device_mesh)
+            fully_shard(model.block1.fc_2, self.device_mesh)
+            fully_shard(model.block2.fc_1, self.device_mesh)
+            fully_shard(model.block2.fc_2, self.device_mesh)
             fully_shard(model.lm_head, self.device_mesh)
         elif strategy == "block":
             fully_shard(model.block1, self.device_mesh)

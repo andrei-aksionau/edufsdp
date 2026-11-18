@@ -90,8 +90,8 @@ class TestDTensorStructureParity(TestParityBase):
 
     def test_dtensor_properties_and_gradients(self) -> None:
         """
-        Verifies parameter types, placements, device mesh, local shapes, and gradient
-        DTensor types.
+        Verifies parameter types, placements, device mesh, local shapes, and gradient DTensor
+        types.
         """
         out_custom = self.wrapped_custom(self.dummy_input)
         out_custom.sum().backward()
@@ -173,7 +173,7 @@ class TestExecutionLifecycleParity(TestParityBase):
 
     def test_sharding_after_wrapping(self) -> None:
         """
-        1. Verifies that parameters are correctly sharded immediately upon wrapping for both
+        Verifies that parameters are correctly sharded immediately upon wrapping for both
         models.
         """
         for parameter_name, (
@@ -191,7 +191,7 @@ class TestExecutionLifecycleParity(TestParityBase):
 
     def test_forward_parameters_are_gathered(self) -> None:
         """
-        2. Verifies that parameters are all-gathered during the forward pass in both
+        Verifies that parameters are all-gathered during the forward pass in both
         models.
         """
         custom_shapes_during_forward: dict[str, Size] = {}
@@ -235,7 +235,7 @@ class TestExecutionLifecycleParity(TestParityBase):
 
     def test_forward_parameters_resharded_after_forward(self) -> None:
         """
-        3. Verifies that parameters are resharded back to local shapes after forward in both
+        Verifies that parameters are resharded back to local shapes after forward in both
         models.
         """
         self.wrapped_custom(self.dummy_input)
@@ -252,7 +252,7 @@ class TestExecutionLifecycleParity(TestParityBase):
 
     def test_backward_parameters_are_gathered(self) -> None:
         """
-        4. Verifies that parameters are all-gathered during the backward pass in both
+        Verifies that parameters are all-gathered during the backward pass in both
         models.
         """
         custom_shapes_during_backward: dict[str, torch.Size] = {}
@@ -296,8 +296,8 @@ class TestExecutionLifecycleParity(TestParityBase):
 
     def test_backward_gradients_are_reduce_scattered(self) -> None:
         """
-        5. Verifies that gradients are reduce-scattered to local sharded shapes matching
-        Native FSDP2.
+        Verifies that gradients are reduce-scattered to local sharded shapes matching Native
+        FSDP2.
         """
         self.wrapped_custom(self.dummy_input).sum().backward()
         self.wrapped_reference(self.dummy_input).sum().backward()
@@ -322,8 +322,8 @@ class TestExecutionLifecycleParity(TestParityBase):
 
     def test_parameters_resharded_after_backward(self) -> None:
         """
-        6. Verifies that parameters are resharded back to local shapes after backward in
-        both models.
+        Verifies that parameters are resharded back to local shapes after backward in both
+        models.
         """
         self.wrapped_custom(self.dummy_input).sum().backward()
         self.wrapped_reference(self.dummy_input).sum().backward()
@@ -344,8 +344,8 @@ class TestConvergenceParity(TestParityBase):
 
     def test_multi_step_training_convergence(self) -> None:
         """
-        Verifies forward outputs and loss values match Native FSDP2 over a 5-step SGD
-        training loop.
+        Verifies forward outputs and loss values match Native FSDP2 over a 5-step SGD training
+        loop.
         """
         custom_optimizer = torch.optim.SGD(self.wrapped_custom.parameters(), lr=0.01)
         reference_optimizer = torch.optim.SGD(self.wrapped_reference.parameters(), lr=0.01)

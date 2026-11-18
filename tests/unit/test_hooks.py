@@ -25,8 +25,8 @@ class TestHooks(DistributedTestBase):
 
     def test_fsdp_all_gather_function_forward_and_backward(self) -> None:
         """Verifies forward parameter all-gather and backward gradient reduce-scatter."""
-        layer = self.base_model.fc1
-        fqn = "fc1.weight"
+        layer = self.base_model.fc_1
+        fqn = "fc_1.weight"
         global_shape, local_shape = self.expected_shapes[fqn]
 
         sharded_parameter = ShardedParameter(
@@ -60,8 +60,8 @@ class TestHooks(DistributedTestBase):
         Verifies parameter gathering before forward execution
         and freeing immediately after.
         """
-        layer = self.base_model.fc1
-        fqn = "fc1.weight"
+        layer = self.base_model.fc_1
+        fqn = "fc_1.weight"
         global_shape, local_shape = self.expected_shapes[fqn]
 
         sharded_parameter = ShardedParameter(
@@ -105,19 +105,19 @@ class TestHooks(DistributedTestBase):
         Verifies that forward hooks correctly manage multiple sharded parameters
         together.
         """
-        # Setup multiple parameters (fc1 and fc2) managed by a single hook dictionary
-        param1 = self.base_model.fc1.weight
-        param2 = self.base_model.fc2.weight
+        # Setup multiple parameters (fc_1 and fc_2) managed by a single hook dictionary
+        param1 = self.base_model.fc_1.weight
+        param2 = self.base_model.fc_2.weight
 
         sharded_param1 = ShardedParameter(
-            fqn="fc1.weight",
-            module=self.base_model.fc1,
+            fqn="fc_1.weight",
+            module=self.base_model.fc_1,
             parameter=nn.Parameter(param1),
             device_mesh=self.device_mesh,
         )
         sharded_param2 = ShardedParameter(
-            fqn="fc2.weight",
-            module=self.base_model.fc2,
+            fqn="fc_2.weight",
+            module=self.base_model.fc_2,
             parameter=nn.Parameter(param2),
             device_mesh=self.device_mesh,
         )
@@ -154,8 +154,8 @@ class TestHooks(DistributedTestBase):
 
     def test_backward_pre_hook_and_backward_post_hook_lifecycle(self) -> None:
         """Verifies parameter re-gathering during backward pass and memory release after."""
-        layer = self.base_model.fc1
-        fqn = "fc1.weight"
+        layer = self.base_model.fc_1
+        fqn = "fc_1.weight"
         global_shape, local_shape = self.expected_shapes[fqn]
 
         sharded_parameter = ShardedParameter(
@@ -197,19 +197,19 @@ class TestHooks(DistributedTestBase):
         Verifies that backward hooks correctly manage multiple sharded parameters
         together.
         """
-        # Setup multiple parameters (fc1 and fc2) managed by a single hook dictionary
-        param_1 = self.base_model.fc1.weight
-        param_2 = self.base_model.fc2.weight
+        # Setup multiple parameters (fc_1 and fc_2) managed by a single hook dictionary
+        param_1 = self.base_model.fc_1.weight
+        param_2 = self.base_model.fc_2.weight
 
         sharded_param_1 = ShardedParameter(
-            fqn="fc1.weight",
-            module=self.base_model.fc1,
+            fqn="fc_1.weight",
+            module=self.base_model.fc_1,
             parameter=nn.Parameter(param_1),
             device_mesh=self.device_mesh,
         )
         sharded_param_2 = ShardedParameter(
-            fqn="fc2.weight",
-            module=self.base_model.fc2,
+            fqn="fc_2.weight",
+            module=self.base_model.fc_2,
             parameter=nn.Parameter(param_2),
             device_mesh=self.device_mesh,
         )

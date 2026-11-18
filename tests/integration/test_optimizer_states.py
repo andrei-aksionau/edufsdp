@@ -88,8 +88,8 @@ class TestOptimizerStates(DistributedTestBase):
 
     def test_sgd_momentum_optimizer_state_populated_post_step(self) -> None:
         """
-        Verifies non-Adam optimizer (SGD with momentum) state lazy creation and local
-        sharded shapes after step().
+        Verifies non-Adam optimizer (SGD with momentum) state lazy creation and local sharded
+        shapes after step().
         """
         optimizer = torch.optim.SGD(self.wrapped_model.parameters(), lr=0.01, momentum=0.9)
 

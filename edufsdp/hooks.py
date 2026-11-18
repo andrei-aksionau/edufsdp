@@ -4,7 +4,7 @@ Autograd and module execution hooks for Educational FSDP.
 Provides:
 1. `FSDPAllGatherFunction`: Autograd function handling All-Gather and Reduce-Scatter.
 2. `ForwardPreHook`: Module-level parameter reconstruction before forward calculation.
-3. `ForwardPostHook`: Parameter-level memory freeing after forward computation.
+3. `ForwardPostHook`: Module-level memory freeing after forward computation.
 4. `BackwardPreHook`: Module-level re-gathering for backward pass.
 5. `BackwardPostHook`: Parameter-level memory freeing after gradient computations.
 
@@ -104,7 +104,7 @@ class FSDPAllGatherFunction(torch.autograd.Function):
             dist.all_gather_single(
                 unsharded_buffer,
                 local_parameter.contiguous(),
-                group=sharded_parameter.device_mesh.get_group(),
+                group=sharded_parameter.dtensor.device_mesh.get_group(),
             )
 
         logger.log_transition(
@@ -144,11 +144,11 @@ class FSDPAllGatherFunction(torch.autograd.Function):
             sharded_grad,
             grad_output.contiguous(),
             op=dist.ReduceOp.SUM,
-            group=parameter.device_mesh.get_group(),
+            group=parameter.dtensor.device_mesh.get_group(),
         )
 
         # Each rank's loss was a mean over its own batch, so average the summed gradients
-        sharded_grad /= parameter.device_mesh.size()
+        sharded_grad /= parameter.dtensor.device_mesh.size()
 
         logger.log_transition(
             event_name="reduce_scatter",
@@ -223,15 +223,15 @@ class ForwardPostHook:
             if not sharded_parameter.is_gathered:
                 continue
 
-            before_shape = sharded_parameter.shape
+            shape_before = sharded_parameter.shape
             sharded_parameter.set_sharded()
-            after_shape = sharded_parameter.shape
+            shape_after = sharded_parameter.shape
 
             logger.log_transition(
                 event_name="free",
                 parameter_name=sharded_parameter.fqn,
-                shape_before=before_shape,
-                shape_after=after_shape,
+                shape_before=shape_before,
+                shape_after=shape_after,
             )
 
 
@@ -271,7 +271,7 @@ class BackwardPreHook:
 
 class BackwardPostHook:
     """
-    Module/Parameter backward post-hook that frees the gathered parameter after gradient
+    Parameter backward post-hook that frees the gathered parameter after gradient
     computations.
 
     Triggers after layer gradient calculations complete. Releases full parameter memory,
@@ -292,13 +292,13 @@ class BackwardPostHook:
         if not self.sharded_parameter.is_gathered:
             return
 
-        before_shape = self.sharded_parameter.shape
+        shape_before = self.sharded_parameter.shape
         self.sharded_parameter.set_sharded()
-        after_shape = self.sharded_parameter.shape
+        shape_after = self.sharded_parameter.shape
 
         logger.log_transition(
             event_name="free",
             parameter_name=self.sharded_parameter.fqn,
-            shape_before=before_shape,
-            shape_after=after_shape,
+            shape_before=shape_before,
+            shape_after=shape_after,
         )

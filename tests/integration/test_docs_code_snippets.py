@@ -17,8 +17,8 @@ class MarkdownSnippet(NamedTuple):
     """Container for an extracted documentation code snippet."""
 
     name: str
-    code_str: str
     world_size: int
+    code_str: str
 
 
 def _run_markdown_snippet_worker(
@@ -34,7 +34,7 @@ def _run_markdown_snippet_worker(
     exec(code_str, {})  # ruff: ignore[exec-builtin]
 
 
-def _get_markdown_code_snippets() -> list[tuple[str, str, int]]:
+def _get_markdown_code_snippets() -> list[MarkdownSnippet]:
     """
     Scans all .md files in the docs/ directory for ```python verify_via_test blocks.
 
@@ -46,10 +46,9 @@ def _get_markdown_code_snippets() -> list[tuple[str, str, int]]:
         return []
 
     snippets = []
-    # Use verbose regex with comments (re.VERBOSE) to keep the pattern readable
     pattern = re.compile(
         r"""
-        ```python\s+verify_via_test  # Match opening fence and marker
+        ```python\s+verify_via_test   # Match opening fence and marker
         (?:\s+world_size=(\d+))?      # Optional world_size capture group
         [^\r\n]*                      # Consume remainder of the fence line
         \r?\n                         # Newline
@@ -70,8 +69,8 @@ def _get_markdown_code_snippets() -> list[tuple[str, str, int]]:
             snippets.append(
                 MarkdownSnippet(
                     name=name,
-                    code_str=code_str.strip(),
                     world_size=world_size,
+                    code_str=code_str.strip(),
                 )
             )
 
@@ -85,8 +84,8 @@ def _get_markdown_code_snippets() -> list[tuple[str, str, int]]:
 )
 def test_markdown_code_snippet(snippet: MarkdownSnippet) -> None:
     """
-    Spawns distributed worker processes to execute an extracted documentation
-    code snippet.
+    Spawns distributed worker processes to execute an extracted documentation code
+    snippet.
     """
     port = get_free_port()
     torch.multiprocessing.spawn(

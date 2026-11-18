@@ -50,23 +50,22 @@ class ShardedParameter:
 
     def __init__(
         self,
-        fqn: str,
         module: nn.Module,
         parameter: nn.Parameter,
+        fqn: str,
         device_mesh: DeviceMesh,
     ) -> None:
         """
         Initializes parameter sharding state and installs the sharded DTensor onto the module.
 
         Args:
-            fqn: Fully qualified parameter name (e.g., 'layer1.weight').
             module: Parent PyTorch module owning this parameter.
             parameter: Unsharded source parameter to split across ranks.
+            fqn: Fully qualified parameter name (e.g., 'layer1.weight').
             device_mesh: PyTorch DeviceMesh defining rank layout.
         """
-        self.fqn = fqn
         self.module = module
-        self.device_mesh = device_mesh
+        self.fqn = fqn
 
         # ---------------------------------------------------------------------
         # 1. Distribute raw tensor memory into a DTensor parameter
@@ -79,7 +78,7 @@ class ShardedParameter:
         with torch.no_grad():
             sharded_dtensor = distribute_tensor(
                 parameter.data,
-                device_mesh=self.device_mesh,
+                device_mesh=device_mesh,
                 placements=[Shard(dim=0)],
             )
             self.dtensor: DTensor = cast(
@@ -166,23 +165,26 @@ class ShardedParameter:
 
     def set_unsharded(self, full_tensor: Tensor) -> None:
         """
-        Attaches the full gathered tensor to the parent module attribute.
+        Temporarily exposes the full gathered tensor through the parent module attribute.
 
-        Bypasses nn.Module.__setattr__ type checks (which reject plain Tensors
-        on nn.Parameter attributes) by writing directly to module.__dict__,
-        allowing C++ operations like F.linear to consume the contiguous tensor.
+        Bypasses `nn.Module.__setattr__` because it performs a type check and rejects
+        plain Tensors when the attribute is already registered as an `nn.Parameter`.
+        Writing directly to `module.__dict__` allows the full Tensor to shadow the
+        registered DTensor, while keeping the DTensor in `module._parameters`.
 
         Args:
-            full_tensor: Unsharded full-size tensor gathered across ranks.
+            full_tensor: Full-size parameter tensor gathered across all ranks.
         """
         self.module.__dict__[self.parameter_name] = full_tensor
 
     def set_sharded(self) -> None:
         """
-        Restores the parent module attribute back to the rank-local DTensor `nn.Parameter`.
+        Restores access to the rank-local DTensor registered in the parent module.
 
-        This release the reference to the full unsharded tensor memory,
-        and resize down the underlying storage to zero bytes to release memory.
+        Removes the temporary full Tensor from `module.__dict__`, allowing normal
+        attribute lookup to resolve to the DTensor still registered in
+        `module._parameters`. Also releases the reference to the full tensor and
+        resizes its underlying storage to zero bytes to free the gathered memory.
         """
         self.module.__dict__.pop(self.parameter_name, None)
         self.release_unsharded_buffer()

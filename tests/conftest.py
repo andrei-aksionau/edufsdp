@@ -28,8 +28,8 @@ def get_free_port() -> str:
 
 def _init_distributed_environment(rank: int, world_size: int, port: str) -> None:
     """
-    Configures standard PyTorch distributed environment variables and initializes
-    the Gloo process group with loopback interface bindings.
+    Configures standard PyTorch distributed environment variables and initializes the Gloo
+    process group with loopback interface bindings.
     """
     # Configure PyTorch Distributed environment variables
     os.environ["MASTER_ADDR"] = "127.0.0.1"
@@ -47,10 +47,13 @@ def _init_distributed_environment(rank: int, world_size: int, port: str) -> None
         # On Windows, let Gloo auto-detect the interface
         os.environ.pop("GLOO_SOCKET_IFNAME", None)
 
+    # Extend timeout if debugpy is active
+    if os.environ.get("DEBUGPY_RUNNING") == "true":
+        timeout_seconds = 86400  # 24 hours
+    else:
+        timeout_seconds = int(os.environ.get("DIST_TIMEOUT_SECONDS", 28))
+
     # Initialize PyTorch distributed process group
-    # Fallback to 28 seconds (slightly shorter than pytest timeout) for normal runs,
-    # allow override during debugging
-    timeout_seconds = int(os.environ.get("DIST_TIMEOUT_SECONDS", 28))
     dist.init_process_group(
         backend="gloo",
         rank=rank,
@@ -70,8 +73,8 @@ def _spawn_worker(
     """
     Target function executed inside each spawned worker process.
 
-    Populates standard PyTorch distributed environment variables, sets up loopback
-    network interfaces for Gloo, and executes the target test function or method.
+    Populates standard PyTorch distributed environment variables, sets up loopback network
+    interfaces for Gloo, and executes the target test function or method.
     """
     _init_distributed_environment(rank, world_size, port)
 
@@ -93,9 +96,9 @@ def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> bool | None:
     """
     Intercepts marked test calls to execute them across spawned worker processes.
 
-    If a test item or its parent class is marked with `@pytest.mark.multi_rank`,
-    this hook intercepts standard single-process execution and instead spawns `world_size`
-    isolated CPU worker processes.
+    If a test item or its parent class is marked with `@pytest.mark.multi_rank`, this hook
+    intercepts standard single-process execution and instead spawns `world_size` isolated CPU
+    worker processes.
     """
     marker = pyfuncitem.get_closest_marker("multi_rank")
     if not marker:

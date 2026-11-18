@@ -29,8 +29,8 @@ class TestCustomDTensorLifecycle(DistributedTestBase):
 
     def test_dtensor_resting_and_forward_lifecycle(self) -> None:
         """
-        Verifies DTensor types, placements, and local shard shapes
-        at rest and post-forward.
+        Verifies DTensor types, placements, and local shard shapes at rest and
+        post-forward.
         """
         # 1. Check resting state before forward
         for parameter_name, (_, expected_local_shape) in self.expected_shapes.items():
@@ -57,8 +57,8 @@ class TestCustomDTensorLifecycle(DistributedTestBase):
 
     def test_dtensor_backward_lifecycle_and_gradients(self) -> None:
         """
-        Verifies weight DTensors and gradient DTensor placements, shapes,
-        and types post-backward.
+        Verifies weight DTensors and gradient DTensor placements, shapes, and types
+        post-backward.
         """
         output = self.wrapped_model(self.dummy_input)
         loss = output.sum()
